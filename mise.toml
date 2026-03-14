@@ -1,0 +1,5 @@
+[tools]
+elixir = "latest"
+erlang = "latest"
+gleam = "latest"
+rebar = "latest"
