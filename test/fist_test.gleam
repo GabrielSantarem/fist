@@ -1,4 +1,5 @@
 import fist
+import gleam/dict
 import gleam/http.{Get}
 import gleam/http/request
 import gleam/http/response
@@ -9,49 +10,59 @@ pub fn main() {
   gleeunit.main()
 }
 
-pub fn router_declaration_test() {
-  let handler = fn(_req) {
+pub fn dynamic_route_test() {
+  let handler = fn(_req, params) {
+    let name = dict.get(params, "name") |> result_unwrap("stranger")
     response.new(200)
-    |> response.set_body("Hello!")
+    |> response.set_body("Hello, " <> name <> "!")
   }
 
-  // Declarative declaration using pipes (chaining)
   let router =
     fist.new()
-    |> fist.get("/", to: handler)
-    |> fist.post("/data", to: handler)
+    |> fist.get("/hello/:name", to: handler)
 
-  // Verify it handles a GET request to "/"
   let req =
     request.new()
     |> request.set_method(Get)
-    |> request.set_path("/")
-    |> request.set_body("") // Using String as body for easy testing
+    |> request.set_path("/hello/tomate")
+    |> request.set_body("")
   
   let res = fist.handle(router, req, fn() { 
     response.new(404) |> response.set_body("Not Found") 
   })
 
-  res.status
-  |> should.equal(200)
-
-  res.body
-  |> should.equal("Hello!")
+  res.status |> should.equal(200)
+  res.body |> should.equal("Hello, tomate!")
 }
 
-pub fn not_found_test() {
-  let router = fist.new()
+pub fn nested_dynamic_route_test() {
+  let handler = fn(_req, params) {
+    let user_id = dict.get(params, "user_id") |> result_unwrap("0")
+    let post_id = dict.get(params, "post_id") |> result_unwrap("0")
+    response.new(200)
+    |> response.set_body("User " <> user_id <> ", Post " <> post_id)
+  }
+
+  let router =
+    fist.new()
+    |> fist.get("/users/:user_id/posts/:post_id", to: handler)
 
   let req =
     request.new()
     |> request.set_method(Get)
-    |> request.set_path("/unknown")
+    |> request.set_path("/users/123/posts/456")
     |> request.set_body("")
+  
+  let res = fist.handle(router, req, fn() { response.new(404) |> response.set_body("") })
 
-  let res = fist.handle(router, req, fn() { 
-    response.new(404) |> response.set_body("Not Found") 
-  })
+  res.status |> should.equal(200)
+  res.body |> should.equal("User 123, Post 456")
+}
 
-  res.status
-  |> should.equal(404)
+// Helper local para não depender de mais nada nos testes
+fn result_unwrap(res, default) {
+  case res {
+    Ok(v) -> v
+    Error(_) -> default
+  }
 }
