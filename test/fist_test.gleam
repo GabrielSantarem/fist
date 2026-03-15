@@ -26,10 +26,11 @@ pub fn dynamic_route_test() {
     |> request.set_method(Get)
     |> request.set_path("/hello/tomate")
     |> request.set_body("")
-  
-  let res = fist.handle(router, req, fn() { 
-    response.new(404) |> response.set_body("Not Found") 
-  })
+
+  let res =
+    fist.handle(router, req, fn() {
+      response.new(404) |> response.set_body("Not Found")
+    })
 
   res.status |> should.equal(200)
   res.body |> should.equal("Hello, tomate!")
@@ -52,14 +53,14 @@ pub fn nested_dynamic_route_test() {
     |> request.set_method(Get)
     |> request.set_path("/users/123/posts/456")
     |> request.set_body("")
-  
-  let res = fist.handle(router, req, fn() { response.new(404) |> response.set_body("") })
+
+  let res =
+    fist.handle(router, req, fn() { response.new(404) |> response.set_body("") })
 
   res.status |> should.equal(200)
   res.body |> should.equal("User 123, Post 456")
 }
 
-// Helper local para não depender de mais nada nos testes
 fn result_unwrap(res, default) {
   case res {
     Ok(v) -> v
