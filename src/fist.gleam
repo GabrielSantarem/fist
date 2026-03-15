@@ -7,6 +7,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 
+/// A node in the router tree, representing a route segment.
 pub type Node(req_body, res_body) {
   Node(
     handler: Option(
@@ -17,24 +18,29 @@ pub type Node(req_body, res_body) {
   )
 }
 
+/// A router that handles HTTP requests by matching routes and executing handlers.
 pub opaque type Router(req_body, res_body) {
   Router(routes: Dict(Method, Node(req_body, res_body)))
 }
 
+/// Creates a new empty router.
 pub fn new() -> Router(req_body, res_body) {
   Router(routes: dict.new())
 }
 
+/// Creates a new empty node.
 fn empty_node() -> Node(req_body, res_body) {
   Node(handler: None, static_children: dict.new(), dynamic_child: None)
 }
 
+/// Parses a path string into a list of segments.
 fn parse_path(path: String) -> List(String) {
   path
   |> string.split("/")
   |> list.filter(fn(s) { s != "" })
 }
 
+/// Inserts a route into the router.
 fn insert_route(
   node: Node(req_body, res_body),
   segments: List(String),
@@ -66,6 +72,13 @@ fn insert_route(
   }
 }
 
+/// Inserts a route into the router.
+///
+/// # Arguments
+///
+/// - `node` - The node to insert the route into.
+/// - `segments` - The segments of the path to insert.
+/// - `handler` - The handler function for the route.
 fn add_route(
   router: Router(req_body, res_body),
   method method: Method,
@@ -79,6 +92,7 @@ fn add_route(
   Router(routes: dict.insert(router.routes, method, updated_root))
 }
 
+/// Adds a GET route to the router.
 pub fn get(
   router: Router(req_body, res_body),
   path path: String,
@@ -87,6 +101,7 @@ pub fn get(
   add_route(router, method: Get, path: path, handler: handler)
 }
 
+/// Adds a POST route to the router.
 pub fn post(
   router: Router(req_body, res_body),
   path path: String,
@@ -95,6 +110,7 @@ pub fn post(
   add_route(router, method: Post, path: path, handler: handler)
 }
 
+/// Adds a PUT route to the router.
 pub fn put(
   router: Router(req_body, res_body),
   path path: String,
@@ -103,6 +119,7 @@ pub fn put(
   add_route(router, method: Put, path: path, handler: handler)
 }
 
+/// Adds a DELETE route to the router.
 pub fn delete(
   router: Router(req_body, res_body),
   path path: String,
@@ -111,6 +128,7 @@ pub fn delete(
   add_route(router, method: Delete, path: path, handler: handler)
 }
 
+/// Adds a PATCH route to the router.
 pub fn patch(
   router: Router(req_body, res_body),
   path path: String,
