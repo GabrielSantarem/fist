@@ -1,3 +1,4 @@
+import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/http.{type Method, Delete, Get, Patch, Post, Put}
 import gleam/http/request.{type Request}
@@ -6,6 +7,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import mist
 
 /// A node in the router tree, representing a route segment.
 pub type Node(req_body, res_body) {
@@ -178,6 +180,21 @@ fn find_route(
     }
   }
 }
+
+// TODO: make server function to handle requests
+// pub fn server(router: Router(BitArray, mist.ResponseData), port: Int) {
+//   fn(conn: mist.Connection) -> Response(mist.ResponseData) {
+//     let request = conn |> mist.read_body(0)
+//     let not_found_response = fn() {
+//       response.new(404)
+//       |> response.set_body(mist.Bytes(bit_array.from_string("Not Found")))
+//     }
+//     handle(router, request, not_found_response)
+//   }
+//   |> mist.new
+//   |> mist.port(port)
+//   |> mist.start()
+// }
 
 pub fn handle(
   router: Router(req_body, res_body),
