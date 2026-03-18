@@ -1,4 +1,6 @@
+import gleam/bytes_tree
 import gleam/dict.{type Dict}
+import gleam/erlang/process
 import gleam/http.{type Method, Delete, Get, Patch, Post, Put}
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
@@ -6,6 +8,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import mist
 
 /// A node in the router tree, representing a route segment.
 pub type Node(req_body, res_body) {
@@ -176,6 +179,23 @@ fn find_route(
         }
       }
     }
+  }
+}
+
+pub fn start(router: Router(mist.Connection, mist.ResponseData), port port: Int) {
+  let result =
+    fn(request: request.Request(mist.Connection)) -> Response(mist.ResponseData) {
+      handle(router, request, fn() {
+        response.new(404)
+        |> response.set_body(mist.Bytes(bytes_tree.new()))
+      })
+    }
+    |> mist.new
+    |> mist.port(port)
+    |> mist.start()
+  case result {
+    Ok(_) -> process.sleep_forever()
+    Error(err) -> panic as string.append("init failed: ", string.inspect(err))
   }
 }
 
