@@ -1,5 +1,6 @@
-import gleam/bit_array
+import gleam/bytes_tree
 import gleam/dict.{type Dict}
+import gleam/erlang/process
 import gleam/http.{type Method, Delete, Get, Patch, Post, Put}
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
@@ -181,20 +182,22 @@ fn find_route(
   }
 }
 
-// TODO: make server function to handle requests
-// pub fn server(router: Router(BitArray, mist.ResponseData), port: Int) {
-//   fn(conn: mist.Connection) -> Response(mist.ResponseData) {
-//     let request = conn |> mist.read_body(0)
-//     let not_found_response = fn() {
-//       response.new(404)
-//       |> response.set_body(mist.Bytes(bit_array.from_string("Not Found")))
-//     }
-//     handle(router, request, not_found_response)
-//   }
-//   |> mist.new
-//   |> mist.port(port)
-//   |> mist.start()
-// }
+pub fn start(router: Router(mist.Connection, mist.ResponseData), port port: Int) {
+  let result =
+    fn(request: request.Request(mist.Connection)) -> Response(mist.ResponseData) {
+      handle(router, request, fn() {
+        response.new(404)
+        |> response.set_body(mist.Bytes(bytes_tree.new()))
+      })
+    }
+    |> mist.new
+    |> mist.port(port)
+    |> mist.start()
+  case result {
+    Ok(_) -> process.sleep_forever()
+    Error(err) -> panic as string.append("init failed: ", string.inspect(err))
+  }
+}
 
 pub fn handle(
   router: Router(req_body, res_body),
