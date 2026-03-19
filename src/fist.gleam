@@ -1,6 +1,4 @@
-import gleam/bytes_tree
 import gleam/dict.{type Dict}
-import gleam/erlang/process
 import gleam/http.{type Method, Delete, Get, Patch, Post, Put}
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
@@ -8,8 +6,6 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import gleam/uri
-import mist
 
 /// A node in the router tree, representing a route segment.
 pub type Node(req_body, output) {
@@ -223,31 +219,6 @@ pub fn redirect(to: String) -> Response(String) {
   |> response.prepend_header("location", to)
 }
 
-/// Renders a Response(String) into a Response(mist.ResponseData) for use with Mist.
-pub fn render_mist(res: Response(String)) -> Response(mist.ResponseData) {
-  response.set_body(res, mist.Bytes(bytes_tree.from_string(res.body)))
-}
-
-pub fn start(
-  router: Router(mist.Connection, Response(mist.ResponseData)),
-  port port: Int,
-) {
-  let result =
-    fn(request: request.Request(mist.Connection)) -> Response(mist.ResponseData) {
-      handle(router, request, fn() {
-        response.new(404)
-        |> response.set_body(mist.Bytes(bytes_tree.from_string("Not Found")))
-      })
-    }
-    |> mist.new
-    |> mist.port(port)
-    |> mist.start()
-  case result {
-    Ok(_) -> process.sleep_forever()
-    Error(err) -> panic as string.append("init failed: ", string.inspect(err))
-  }
-}
-
 pub fn handle(
   router: Router(req_body, output),
   request: Request(req_body),
@@ -264,12 +235,4 @@ pub fn handle(
     Ok(#(handler, params)) -> handler(request, params)
     Error(_) -> not_found()
   }
-}
-
-pub fn get_query(req: Request(mist.Connection)) -> Dict(String, String) {
-  req.query
-  |> option.unwrap("")
-  |> uri.parse_query
-  |> result.unwrap([])
-  |> dict.from_list
 }

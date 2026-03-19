@@ -285,14 +285,6 @@ pub fn adt_return_test() {
   fist.handle(router, req("/fail"), fn() { Failure }) |> should.equal(Failure)
 }
 
-pub fn render_mist_test() {
-  let res = fist.ok("hello")
-  let mist_res = fist.render_mist(res)
-
-  mist_res.status |> should.equal(200)
-  // O corpo do mist_res é mist.ResponseData, difícil de comparar diretamente aqui sem importar mist e bytes_tree
-  // Mas se compilou e executou render_mist sem pânico, já é um bom sinal.
-}
 
 // Teste de Mapeamento em Múltiplas Camadas
 pub fn multi_layer_map_test() {
