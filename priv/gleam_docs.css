@@ -1,34 +1,29 @@
-:root {
-  /* Fist Theme - Energetic Orange */
-  --color-brand: #f39c12;        /* Laranja vibrante */
-  --color-brand-dark: #d35400;   /* Laranja queimado para hover */
-  
-  /* Backgrounds */
-  --color-bg: #ffffff;           /* Fundo da página */
-  --color-side-bar-bg: #fff9f2;  /* Fundo da barra lateral com leve toque de laranja */
-  
-  /* Text */
-  --color-text: #2c3e50;         /* Azul escuro acinzentado para texto */
-  --color-text-muted: #7f8c8d;   /* Texto secundário */
-  
-  /* Code Blocks */
-  --color-code-bg: #2d3436;      /* Fundo escuro para snippets */
-  --color-code-text: #dfe6e9;    /* Texto claro no código */
+:root, body {
+  /* Fist Theme - Energetic Orange (Gleam 1.7.0+ compatible) */
+  --primary-color: #f39c12;        /* Main brand color */
+  --background-color: #ffffff;     /* Page background */
+  --sidebar-background-color: #fff9f2; /* Sidebar background */
+  --text-color: #2c3e50;           /* Primary text */
+  --code-background-color: #2d3436; /* Code block background */
+  --border-color: #f39c12;         /* Dividers */
 }
 
 /* Dark Mode Overrides */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #1e1e24;
-    --color-side-bar-bg: #14141a;
-    --color-text: #f5f6fa;
-    --color-brand: #ff9f43;      /* Laranja mais claro no dark mode */
-    --color-brand-dark: #ffffff;
+  :root, body {
+    --background-color: #1e1e24;
+    --sidebar-background-color: #14141a;
+    --text-color: #f5f6fa;
+    --primary-color: #ff9f43;
+    --code-background-color: #121212;
+    --border-color: #ff9f43;
   }
 }
 
-/* Customizing the Logo / Emoji area slightly */
-.side-bar-logo {
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
+/* Fallback for older versions if needed */
+:root {
+  --color-brand: #f39c12;
+  --color-bg: #ffffff;
+  --color-side-bar-bg: #fff9f2;
+  --color-text: #2c3e50;
 }
