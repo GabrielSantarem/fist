@@ -4,7 +4,7 @@ on:
   push:
     branches: ["master", "main"]
 
-# Permissões necessárias para publicar no Pages
+# Necessary permissions to publish to GitHub Pages
 permissions:
   contents: read
   pages: write
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: uses/checkout@v4
 
       - name: Setup Erlang and Gleam
         uses: erlef/setup-beam@v1
@@ -43,7 +43,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # A pasta exata onde o Gleam gera os arquivos de documentação para o pacote 'fist'
+          # The exact path where Gleam generates documentation for the 'fist' package
           path: "./build/dev/docs/fist/"
 
       - name: Deploy to GitHub Pages
