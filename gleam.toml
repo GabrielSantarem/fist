@@ -22,3 +22,8 @@ gleeunit = ">= 1.0.0 and < 2.0.0"
 gleam_erlang = ">= 1.3.0 and < 2.0.0"
 gleam_otp = ">= 1.2.0 and < 2.0.0"
 mist = ">= 6.0.0 and < 7.0.0"
+
+[documentation]
+pages = [
+  { title = "Roadmap", path = "roadmap.html", source = "docs/roadmap.md" },
+]
