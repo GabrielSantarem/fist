@@ -4,8 +4,9 @@ A declarative, type-safe router for the [Mist](https://github.com/rawhat/mist) w
 ## Features
 - **Declarative API**: Build your router with a clean, chainable syntax: `fist.get("/", to: handler)`.
 - **Dynamic Routing**: Capture URL parameters with `:parameter_name`.
-- **Generic Bodies**: Works with any request/response body type (`String`, `BitArray`, or `mist.Connection`).
-- **Testable**: Test your routing logic with plain strings before connecting to a real server.
+- **Generic Output**: Handlers can return anything (`Response`, `String`, or your own custom types).
+- **Transformation Pipeline**: Use `fist.map` to transform your router's output (e.g., from `String` to `mist.ResponseData`).
+- **Response Helpers**: Built-in functions like `fist.ok`, `fist.json`, and `fist.text` for faster development.
 - **Type Safe**: Gleam's type system ensures your handlers always match your router's expectations.
 
 ## Installation
@@ -18,101 +19,79 @@ fist = { path = "../fist" } # Or from Hex when available
 ## Quick Start
 
 ### 1. Define your handlers
-A handler is a function that receives a `Request` and a `Dict(String, String)` with the captured URL parameters.
+With `fist`, you can return standard `Response` types using built-in helpers.
 
 ```gleam
 import gleam/dict.{type Dict}
 import gleam/http/request.{type Request}
-import gleam/http/response.{type Response}
 import gleam/result
+import fist
 
-fn hello_handler(_req: Request(body), params: Dict(String, String)) -> Response(String) {
+fn hello_handler(_req: Request(body), params: Dict(String, String)) {
   let name = dict.get(params, "name") |> result.unwrap("stranger")
-
-  response.new(200)
-  |> response.set_body("Hello, " <> name <> "!")
+  fist.ok("Hello, " <> name <> "!")
 }
 ```
 
-### 2. Create the router
-Use the declarative API to map paths to handlers.
+### 2. Create and transform the router
+You can write your business logic using simple `Response(String)` and then transform it for your web server (like Mist) at the end.
 
 ```gleam
 import fist
 
-pub fn make_router() {
+pub fn main() {
   fist.new()
   |> fist.get("/hello/:name", to: hello_handler)
-  |> fist.post("/users/:id/posts/:post_id", to: complex_handler)
+  |> fist.get("/json", to: fn(_, _) { fist.json("{\"status\": \"ok\"}") })
+  // Transform all Response(String) to Response(mist.ResponseData)
+  |> fist.map(fist.render_mist)
+  |> fist.start(port: 8080)
 }
 ```
 
-### 3. Handle requests
-Pass incoming requests to the `handle` function along with a fallback for unmatched routes.
+
+## Advanced: Custom Return Types (ADTs)
+Because `fist` is generic over the handler's output, you can use your own Algebraic Data Types and map them.
 
 ```gleam
-import gleam/http/response
+pub type MyAnswer {
+  Success(String)
+  UserFound(User)
+  Error(String)
+}
 
-pub fn handle_request(req) {
-  let router = make_router()
+fn my_handler(_, _) {
+  Success("Operation completed")
+}
 
-  fist.handle(router, req, fn() {
-    response.new(404)
-    |> response.set_body("Page not found")
+pub fn start() {
+  fist.new()
+  |> fist.get("/", to: my_handler)
+  |> fist.map(fn(answer) {
+    case answer {
+      Success(msg) -> fist.ok(msg)
+      UserFound(user) -> fist.json(user_to_json(user))
+      Error(err) -> fist.text("Error: " <> err) // Adicione .set_status(400) se necessário
+    }
   })
-}
-```
-
-## Working with URL parameters
-URL parameters are always captured as `String`. Use conversion functions to parse them into other types:
-
-```gleam
-import gleam/int
-import gleam/dict
-import gleam/result
-
-fn my_handler(_req, params) {
-  let id =
-    dict.get(params, "id")
-    |> result.then(int.parse)
-    |> result.unwrap(0) // fallback if the value is not a valid Int
-
-  // ... use id as an Int
+  |> fist.map(fist.render_mist)
+  |> fist.start(8080)
 }
 ```
 
 ## Integration with Mist
-Since `fist` is generic, it works directly with `mist.Connection`:
+The `fist.start` function provides a convenient way to run your router with Mist. It expects a router where handlers return `Response(mist.ResponseData)`.
 
 ```gleam
 import mist
 import fist
-import gleam/bytes_tree
-import gleam/dict
-import gleam/result
 
 pub fn main() {
   fist.new()
   |> fist.get("/", to: fn(_req, _params) {
-    response.new(200)
-    |> response.set_body(mist.Bytes(bytes_tree.from_string("Hello, World!")))
+    fist.ok("Hello from Mist!")
   })
-  |> fist.get("/hello/:name", to: fn(_req, params) {
-    let name = dict.get(params, "name") |> result.unwrap("stranger")
-    response.new(200)
-    |> response.set_body(
-      mist.Bytes(bytes_tree.from_string("Hello, " <> name <> "!")),
-    )
-  })
-  |> fist.get("/echo/:message", to: fn(_req, params) {
-    let msg = dict.get(params, "message") |> result.unwrap("")
-    response.new(200)
-    |> response.set_body(mist.Bytes(bytes_tree.from_string("Echo: " <> msg)))
-  })
-  |> fist.post("/submit", to: fn(_req, _params) {
-    response.new(201)
-    |> response.set_body(mist.Bytes(bytes_tree.from_string("Submitted!")))
-  })
+  |> fist.map(fist.render_mist)
   |> fist.start(port: 8080)
 }
 ```
