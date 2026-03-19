@@ -12,9 +12,8 @@ A declarative, functional router for Gleam.
 
 ## Installation
 Add `fist` to your `gleam.toml`:
-```toml
-[dependencies]
-fist = { path = "../fist" } # Or from Hex when available
+```sh
+gleam add fist@1
 ```
 
 ## Quick Start
