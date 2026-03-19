@@ -8,31 +8,30 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import gleam/uri
 import mist
 
 /// A node in the router tree, representing a route segment.
-pub type Node(req_body, res_body) {
+pub type Node(req_body, output) {
   Node(
-    handler: Option(
-      fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-    ),
-    static_children: Dict(String, Node(req_body, res_body)),
-    dynamic_child: Option(#(String, Node(req_body, res_body))),
+    handler: Option(fn(Request(req_body), Dict(String, String)) -> output),
+    static_children: Dict(String, Node(req_body, output)),
+    dynamic_child: Option(#(String, Node(req_body, output))),
   )
 }
 
 /// A router that handles HTTP requests by matching routes and executing handlers.
-pub opaque type Router(req_body, res_body) {
-  Router(routes: Dict(Method, Node(req_body, res_body)))
+pub opaque type Router(req_body, output) {
+  Router(routes: Dict(Method, Node(req_body, output)))
 }
 
 /// Creates a new empty router.
-pub fn new() -> Router(req_body, res_body) {
+pub fn new() -> Router(req_body, output) {
   Router(routes: dict.new())
 }
 
 /// Creates a new empty node.
-fn empty_node() -> Node(req_body, res_body) {
+fn empty_node() -> Node(req_body, output) {
   Node(handler: None, static_children: dict.new(), dynamic_child: None)
 }
 
@@ -45,10 +44,10 @@ fn parse_path(path: String) -> List(String) {
 
 /// Inserts a route into the router.
 fn insert_route(
-  node: Node(req_body, res_body),
+  node: Node(req_body, output),
   segments: List(String),
-  handler: fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-) -> Node(req_body, res_body) {
+  handler: fn(Request(req_body), Dict(String, String)) -> output,
+) -> Node(req_body, output) {
   case segments {
     [] -> Node(..node, handler: Some(handler))
     [":" <> param_name, ..rest] -> {
@@ -76,19 +75,12 @@ fn insert_route(
 }
 
 /// Inserts a route into the router.
-///
-/// # Arguments
-///
-/// - `node` - The node to insert the route into.
-/// - `segments` - The segments of the path to insert.
-/// - `handler` - The handler function for the route.
-fn add_route(
-  router: Router(req_body, res_body),
+pub fn route(
+  router: Router(req_body, output),
   method method: Method,
   path path: String,
-  handler handler: fn(Request(req_body), Dict(String, String)) ->
-    Response(res_body),
-) -> Router(req_body, res_body) {
+  handler handler: fn(Request(req_body), Dict(String, String)) -> output,
+) -> Router(req_body, output) {
   let segments = parse_path(path)
   let root = dict.get(router.routes, method) |> result.unwrap(empty_node())
   let updated_root = insert_route(root, segments, handler)
@@ -97,58 +89,55 @@ fn add_route(
 
 /// Adds a GET route to the router.
 pub fn get(
-  router: Router(req_body, res_body),
+  router: Router(req_body, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-) -> Router(req_body, res_body) {
-  add_route(router, method: Get, path: path, handler: handler)
+  to handler: fn(Request(req_body), Dict(String, String)) -> output,
+) -> Router(req_body, output) {
+  route(router, method: Get, path: path, handler: handler)
 }
 
 /// Adds a POST route to the router.
 pub fn post(
-  router: Router(req_body, res_body),
+  router: Router(req_body, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-) -> Router(req_body, res_body) {
-  add_route(router, method: Post, path: path, handler: handler)
+  to handler: fn(Request(req_body), Dict(String, String)) -> output,
+) -> Router(req_body, output) {
+  route(router, method: Post, path: path, handler: handler)
 }
 
 /// Adds a PUT route to the router.
 pub fn put(
-  router: Router(req_body, res_body),
+  router: Router(req_body, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-) -> Router(req_body, res_body) {
-  add_route(router, method: Put, path: path, handler: handler)
+  to handler: fn(Request(req_body), Dict(String, String)) -> output,
+) -> Router(req_body, output) {
+  route(router, method: Put, path: path, handler: handler)
 }
 
 /// Adds a DELETE route to the router.
 pub fn delete(
-  router: Router(req_body, res_body),
+  router: Router(req_body, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-) -> Router(req_body, res_body) {
-  add_route(router, method: Delete, path: path, handler: handler)
+  to handler: fn(Request(req_body), Dict(String, String)) -> output,
+) -> Router(req_body, output) {
+  route(router, method: Delete, path: path, handler: handler)
 }
 
 /// Adds a PATCH route to the router.
 pub fn patch(
-  router: Router(req_body, res_body),
+  router: Router(req_body, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-) -> Router(req_body, res_body) {
-  add_route(router, method: Patch, path: path, handler: handler)
+  to handler: fn(Request(req_body), Dict(String, String)) -> output,
+) -> Router(req_body, output) {
+  route(router, method: Patch, path: path, handler: handler)
 }
 
 fn find_route(
-  node: Node(req_body, res_body),
+  node: Node(req_body, output),
   segments: List(String),
   params: Dict(String, String),
 ) -> Result(
-  #(
-    fn(Request(req_body), Dict(String, String)) -> Response(res_body),
-    Dict(String, String),
-  ),
+  #(fn(Request(req_body), Dict(String, String)) -> output, Dict(String, String)),
   Nil,
 ) {
   case segments {
@@ -182,12 +171,72 @@ fn find_route(
   }
 }
 
-pub fn start(router: Router(mist.Connection, mist.ResponseData), port port: Int) {
+/// Maps the output of all handlers in the router.
+pub fn map(
+  router: Router(req_body, a),
+  with fun: fn(a) -> b,
+) -> Router(req_body, b) {
+  let new_routes =
+    dict.map_values(router.routes, fn(_, node) { map_node(node, fun) })
+  Router(routes: new_routes)
+}
+
+fn map_node(node: Node(req_body, a), fun: fn(a) -> b) -> Node(req_body, b) {
+  let new_handler =
+    option.map(node.handler, fn(h) { fn(req, params) { h(req, params) |> fun } })
+  let new_static =
+    dict.map_values(node.static_children, fn(_, child) { map_node(child, fun) })
+  let new_dynamic =
+    option.map(node.dynamic_child, fn(pair) {
+      let #(name, child) = pair
+      #(name, map_node(child, fun))
+    })
+  Node(new_handler, new_static, new_dynamic)
+}
+
+// --- Response Helpers ---
+
+/// Creates a 200 OK response with the given body.
+pub fn ok(body: body) -> Response(body) {
+  response.new(200)
+  |> response.set_body(body)
+}
+
+/// Creates a 200 OK response with the given string as body and text/plain content type.
+pub fn text(body: String) -> Response(String) {
+  response.new(200)
+  |> response.set_body(body)
+  |> response.prepend_header("content-type", "text/plain")
+}
+
+/// Creates a 200 OK response with the given string as body and application/json content type.
+pub fn json(body: String) -> Response(String) {
+  response.new(200)
+  |> response.set_body(body)
+  |> response.prepend_header("content-type", "application/json")
+}
+
+/// Creates a 302 Found redirect response.
+pub fn redirect(to: String) -> Response(String) {
+  response.new(302)
+  |> response.set_body("")
+  |> response.prepend_header("location", to)
+}
+
+/// Renders a Response(String) into a Response(mist.ResponseData) for use with Mist.
+pub fn render_mist(res: Response(String)) -> Response(mist.ResponseData) {
+  response.set_body(res, mist.Bytes(bytes_tree.from_string(res.body)))
+}
+
+pub fn start(
+  router: Router(mist.Connection, Response(mist.ResponseData)),
+  port port: Int,
+) {
   let result =
     fn(request: request.Request(mist.Connection)) -> Response(mist.ResponseData) {
       handle(router, request, fn() {
         response.new(404)
-        |> response.set_body(mist.Bytes(bytes_tree.new()))
+        |> response.set_body(mist.Bytes(bytes_tree.from_string("Not Found")))
       })
     }
     |> mist.new
@@ -200,10 +249,10 @@ pub fn start(router: Router(mist.Connection, mist.ResponseData), port port: Int)
 }
 
 pub fn handle(
-  router: Router(req_body, res_body),
+  router: Router(req_body, output),
   request: Request(req_body),
-  not_found: fn() -> Response(res_body),
-) -> Response(res_body) {
+  not_found: fn() -> output,
+) -> output {
   let req_segments = parse_path(request.path)
 
   let matching_route = case dict.get(router.routes, request.method) {
@@ -215,4 +264,12 @@ pub fn handle(
     Ok(#(handler, params)) -> handler(request, params)
     Error(_) -> not_found()
   }
+}
+
+pub fn get_query(req: Request(mist.Connection)) -> Dict(String, String) {
+  req.query
+  |> option.unwrap("")
+  |> uri.parse_query
+  |> result.unwrap([])
+  |> dict.from_list
 }
