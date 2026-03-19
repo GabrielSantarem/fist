@@ -229,16 +229,27 @@ pub fn response_helpers_test() {
     request.new() |> request.set_method(Get) |> request.set_path(path)
   }
 
-  let res_ok = fist.handle(router, req("/ok"), fn() { response.new(404) |> response.set_body("") })
+  let res_ok =
+    fist.handle(router, req("/ok"), fn() {
+      response.new(404) |> response.set_body("")
+    })
   res_ok.status |> should.equal(200)
   res_ok.body |> should.equal("ok")
 
-  let res_text = fist.handle(router, req("/text"), fn() { response.new(404) |> response.set_body("") })
+  let res_text =
+    fist.handle(router, req("/text"), fn() {
+      response.new(404) |> response.set_body("")
+    })
   res_text.status |> should.equal(200)
-  response.get_header(res_text, "content-type") |> should.equal(Ok("text/plain"))
+  response.get_header(res_text, "content-type")
+  |> should.equal(Ok("text/plain"))
 
-  let res_json = fist.handle(router, req("/json"), fn() { response.new(404) |> response.set_body("") })
-  response.get_header(res_json, "content-type") |> should.equal(Ok("application/json"))
+  let res_json =
+    fist.handle(router, req("/json"), fn() {
+      response.new(404) |> response.set_body("")
+    })
+  response.get_header(res_json, "content-type")
+  |> should.equal(Ok("application/json"))
 }
 
 pub fn map_test() {
@@ -247,7 +258,8 @@ pub fn map_test() {
     |> fist.get("/hello", to: fn(_, _) { "hello" })
     |> fist.map(fn(s) { "mapped " <> s })
 
-  let req = request.new() |> request.set_method(Get) |> request.set_path("/hello")
+  let req =
+    request.new() |> request.set_method(Get) |> request.set_path("/hello")
   let res = fist.handle(router, req, fn() { "not found" })
 
   res |> should.equal("mapped hello")
@@ -268,7 +280,8 @@ pub fn adt_return_test() {
     request.new() |> request.set_method(Get) |> request.set_path(path)
   }
 
-  fist.handle(router, req("/success"), fn() { Failure }) |> should.equal(Success("yay"))
+  fist.handle(router, req("/success"), fn() { Failure })
+  |> should.equal(Success("yay"))
   fist.handle(router, req("/fail"), fn() { Failure }) |> should.equal(Failure)
 }
 
@@ -313,7 +326,9 @@ pub fn multi_layer_map_test() {
 // Teste de Composição de Handlers (Pipeline de Middleware)
 pub fn functional_pipeline_test() {
   // Uma função que simula um middleware de autenticação simples
-  let with_auth = fn(handler: fn(request.Request(String), dict.Dict(String, String)) -> String) {
+  let with_auth = fn(
+    handler: fn(request.Request(String), dict.Dict(String, String)) -> String,
+  ) {
     fn(req, params) {
       case request.get_header(req, "authorization") {
         Ok("secret") -> handler(req, params)
@@ -340,7 +355,3 @@ pub fn functional_pipeline_test() {
 
   fist.handle(router, req_auth, fn() { "" }) |> should.equal("TOP SECRET DATA")
 }
-
-
-
-
