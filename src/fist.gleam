@@ -180,7 +180,10 @@ pub fn map(
   Router(routes: new_routes)
 }
 
-fn map_node(node: Node(req_body, ctx, a), fun: fn(a) -> b) -> Node(req_body, ctx, b) {
+fn map_node(
+  node: Node(req_body, ctx, a),
+  fun: fn(a) -> b,
+) -> Node(req_body, ctx, b) {
   let new_handler =
     option.map(node.handler, fn(h) {
       fn(req, ctx, params) { h(req, ctx, params) |> fun }

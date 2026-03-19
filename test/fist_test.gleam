@@ -249,7 +249,8 @@ pub fn response_helpers_test() {
       response.new(404) |> response.set_body("")
     })
   res_text.status |> should.equal(200)
-  response.get_header(res_text, "content-type") |> should.equal(Ok("text/plain"))
+  response.get_header(res_text, "content-type")
+  |> should.equal(Ok("text/plain"))
 
   let res_json =
     fist.handle(router, req("/json"), Nil, fn() {
@@ -289,7 +290,8 @@ pub fn adt_return_test() {
 
   fist.handle(router, req("/success"), Nil, fn() { Failure })
   |> should.equal(Success("yay"))
-  fist.handle(router, req("/fail"), Nil, fn() { Failure }) |> should.equal(Failure)
+  fist.handle(router, req("/fail"), Nil, fn() { Failure })
+  |> should.equal(Failure)
 }
 
 // Teste de Mapeamento em Múltiplas Camadas
@@ -314,8 +316,7 @@ pub fn multi_layer_map_test() {
 
   let req =
     request.new() |> request.set_path("/double/21") |> request.set_method(Get)
-  let res =
-    fist.handle(router, req, Nil, fn() { fist.ok("not found") })
+  let res = fist.handle(router, req, Nil, fn() { fist.ok("not found") })
 
   res.body |> should.equal("O resultado é 42")
   res.status |> should.equal(200)
@@ -345,7 +346,8 @@ pub fn functional_pipeline_test() {
 
   let req_no_auth =
     request.new() |> request.set_path("/secret") |> request.set_method(Get)
-  fist.handle(router, req_no_auth, Nil, fn() { "" }) |> should.equal("UNAUTHORIZED")
+  fist.handle(router, req_no_auth, Nil, fn() { "" })
+  |> should.equal("UNAUTHORIZED")
 
   let req_auth =
     request.new()
@@ -353,7 +355,8 @@ pub fn functional_pipeline_test() {
     |> request.set_method(Get)
     |> request.set_header("authorization", "secret")
 
-  fist.handle(router, req_auth, Nil, fn() { "" }) |> should.equal("TOP SECRET DATA")
+  fist.handle(router, req_auth, Nil, fn() { "" })
+  |> should.equal("TOP SECRET DATA")
 }
 
 pub fn context_test() {
@@ -362,7 +365,7 @@ pub fn context_test() {
     |> fist.get("/ctx", to: fn(_req, ctx, _params) { "Context: " <> ctx })
 
   let req = request.new() |> request.set_path("/ctx") |> request.set_method(Get)
-  
+
   fist.handle(router, req, "Hello Context", fn() { "" })
   |> should.equal("Context: Hello Context")
 }
