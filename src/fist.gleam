@@ -8,26 +8,26 @@ import gleam/result
 import gleam/string
 
 /// A node in the router tree, representing a route segment.
-pub type Node(req_body, output) {
+pub type Node(req_body, ctx, output) {
   Node(
-    handler: Option(fn(Request(req_body), Dict(String, String)) -> output),
-    static_children: Dict(String, Node(req_body, output)),
-    dynamic_child: Option(#(String, Node(req_body, output))),
+    handler: Option(fn(Request(req_body), ctx, Dict(String, String)) -> output),
+    static_children: Dict(String, Node(req_body, ctx, output)),
+    dynamic_child: Option(#(String, Node(req_body, ctx, output))),
   )
 }
 
 /// A router that handles HTTP requests by matching routes and executing handlers.
-pub opaque type Router(req_body, output) {
-  Router(routes: Dict(Method, Node(req_body, output)))
+pub opaque type Router(req_body, ctx, output) {
+  Router(routes: Dict(Method, Node(req_body, ctx, output)))
 }
 
 /// Creates a new empty router.
-pub fn new() -> Router(req_body, output) {
+pub fn new() -> Router(req_body, ctx, output) {
   Router(routes: dict.new())
 }
 
 /// Creates a new empty node.
-fn empty_node() -> Node(req_body, output) {
+fn empty_node() -> Node(req_body, ctx, output) {
   Node(handler: None, static_children: dict.new(), dynamic_child: None)
 }
 
@@ -40,10 +40,10 @@ fn parse_path(path: String) -> List(String) {
 
 /// Inserts a route into the router.
 fn insert_route(
-  node: Node(req_body, output),
+  node: Node(req_body, ctx, output),
   segments: List(String),
-  handler: fn(Request(req_body), Dict(String, String)) -> output,
-) -> Node(req_body, output) {
+  handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Node(req_body, ctx, output) {
   case segments {
     [] -> Node(..node, handler: Some(handler))
     [":" <> param_name, ..rest] -> {
@@ -72,11 +72,11 @@ fn insert_route(
 
 /// Inserts a route into the router.
 pub fn route(
-  router: Router(req_body, output),
+  router: Router(req_body, ctx, output),
   method method: Method,
   path path: String,
-  handler handler: fn(Request(req_body), Dict(String, String)) -> output,
-) -> Router(req_body, output) {
+  handler handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
   let segments = parse_path(path)
   let root = dict.get(router.routes, method) |> result.unwrap(empty_node())
   let updated_root = insert_route(root, segments, handler)
@@ -85,55 +85,58 @@ pub fn route(
 
 /// Adds a GET route to the router.
 pub fn get(
-  router: Router(req_body, output),
+  router: Router(req_body, ctx, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> output,
-) -> Router(req_body, output) {
+  to handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
   route(router, method: Get, path: path, handler: handler)
 }
 
 /// Adds a POST route to the router.
 pub fn post(
-  router: Router(req_body, output),
+  router: Router(req_body, ctx, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> output,
-) -> Router(req_body, output) {
+  to handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
   route(router, method: Post, path: path, handler: handler)
 }
 
 /// Adds a PUT route to the router.
 pub fn put(
-  router: Router(req_body, output),
+  router: Router(req_body, ctx, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> output,
-) -> Router(req_body, output) {
+  to handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
   route(router, method: Put, path: path, handler: handler)
 }
 
 /// Adds a DELETE route to the router.
 pub fn delete(
-  router: Router(req_body, output),
+  router: Router(req_body, ctx, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> output,
-) -> Router(req_body, output) {
+  to handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
   route(router, method: Delete, path: path, handler: handler)
 }
 
 /// Adds a PATCH route to the router.
 pub fn patch(
-  router: Router(req_body, output),
+  router: Router(req_body, ctx, output),
   path path: String,
-  to handler: fn(Request(req_body), Dict(String, String)) -> output,
-) -> Router(req_body, output) {
+  to handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
   route(router, method: Patch, path: path, handler: handler)
 }
 
 fn find_route(
-  node: Node(req_body, output),
+  node: Node(req_body, ctx, output),
   segments: List(String),
   params: Dict(String, String),
 ) -> Result(
-  #(fn(Request(req_body), Dict(String, String)) -> output, Dict(String, String)),
+  #(
+    fn(Request(req_body), ctx, Dict(String, String)) -> output,
+    Dict(String, String),
+  ),
   Nil,
 ) {
   case segments {
@@ -169,17 +172,19 @@ fn find_route(
 
 /// Maps the output of all handlers in the router.
 pub fn map(
-  router: Router(req_body, a),
+  router: Router(req_body, ctx, a),
   with fun: fn(a) -> b,
-) -> Router(req_body, b) {
+) -> Router(req_body, ctx, b) {
   let new_routes =
     dict.map_values(router.routes, fn(_, node) { map_node(node, fun) })
   Router(routes: new_routes)
 }
 
-fn map_node(node: Node(req_body, a), fun: fn(a) -> b) -> Node(req_body, b) {
+fn map_node(node: Node(req_body, ctx, a), fun: fn(a) -> b) -> Node(req_body, ctx, b) {
   let new_handler =
-    option.map(node.handler, fn(h) { fn(req, params) { h(req, params) |> fun } })
+    option.map(node.handler, fn(h) {
+      fn(req, ctx, params) { h(req, ctx, params) |> fun }
+    })
   let new_static =
     dict.map_values(node.static_children, fn(_, child) { map_node(child, fun) })
   let new_dynamic =
@@ -220,8 +225,9 @@ pub fn redirect(to: String) -> Response(String) {
 }
 
 pub fn handle(
-  router: Router(req_body, output),
+  router: Router(req_body, ctx, output),
   request: Request(req_body),
+  context: ctx,
   not_found: fn() -> output,
 ) -> output {
   let req_segments = parse_path(request.path)
@@ -232,7 +238,7 @@ pub fn handle(
   }
 
   case matching_route {
-    Ok(#(handler, params)) -> handler(request, params)
+    Ok(#(handler, params)) -> handler(request, context, params)
     Error(_) -> not_found()
   }
 }
