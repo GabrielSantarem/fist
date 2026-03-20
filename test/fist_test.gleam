@@ -226,36 +226,27 @@ pub fn missing_param_fallback_test() {
   res.body |> should.equal("Hello, stranger!")
 }
 
-pub fn response_helpers_test() {
+pub fn response_mapper_test() {
   let router =
     fist.new()
-    |> fist.get("/ok", to: fn(_, _, _) { fist.ok("ok") })
-    |> fist.get("/text", to: fn(_, _, _) { fist.text("text") })
-    |> fist.get("/json", to: fn(_, _, _) { fist.json("{\"a\":1}") })
+    |> fist.get("/json", to: fn(_, _, _) { "{\"a\":1}" })
+    |> fist.map(fn(body) {
+      response.new(200)
+      |> response.set_body(body)
+      |> response.prepend_header("content-type", "application/json")
+    })
 
   let req = fn(path) {
     request.new() |> request.set_method(Get) |> request.set_path(path)
   }
 
-  let res_ok =
-    fist.handle(router, req("/ok"), Nil, fn() {
-      response.new(404) |> response.set_body("")
-    })
-  res_ok.status |> should.equal(200)
-  res_ok.body |> should.equal("ok")
-
-  let res_text =
-    fist.handle(router, req("/text"), Nil, fn() {
-      response.new(404) |> response.set_body("")
-    })
-  res_text.status |> should.equal(200)
-  response.get_header(res_text, "content-type")
-  |> should.equal(Ok("text/plain"))
-
   let res_json =
     fist.handle(router, req("/json"), Nil, fn() {
       response.new(404) |> response.set_body("")
     })
+
+  res_json.status |> should.equal(200)
+  res_json.body |> should.equal("{\"a\":1}")
   response.get_header(res_json, "content-type")
   |> should.equal(Ok("application/json"))
 }
@@ -310,13 +301,16 @@ pub fn multi_layer_map_test() {
     // Camada 1: Converte Int -> String
     |> fist.map(fn(n) { "O resultado é " <> int.to_string(n) })
     // Camada 2: Converte String -> Response(String)
-    |> fist.map(fist.ok)
+    |> fist.map(fn(body) { response.new(200) |> response.set_body(body) })
     // Camada 3: Adiciona um Header customizado
     |> fist.map(fn(res) { response.prepend_header(res, "x-fist", "power") })
 
   let req =
     request.new() |> request.set_path("/double/21") |> request.set_method(Get)
-  let res = fist.handle(router, req, Nil, fn() { fist.ok("not found") })
+  let res =
+    fist.handle(router, req, Nil, fn() {
+      response.new(404) |> response.set_body("not found")
+    })
 
   res.body |> should.equal("O resultado é 42")
   res.status |> should.equal(200)
