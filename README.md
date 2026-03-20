@@ -7,13 +7,12 @@ A declarative, functional router for Gleam.
 - **Generic Context**: Pass any context (database connections, config, etc.) to your handlers without rebuilding the router.
 - **Generic Output**: Handlers can return anything (`Response`, `String`, or your own custom types).
 - **Transformation Pipeline**: Use `fist.map` to transform your router's output globally.
-- **Response Helpers**: Built-in functions like `fist.ok`, `fist.json`, and `fist.text` for faster development.
 - **Pure Gleam**: No mandatory dependencies on specific web servers. Works with anything that uses the standard `gleam/http` types.
 
 ## Installation
 Add `fist` to your `gleam.toml`:
 ```sh
-gleam add fist@1
+gleam add fist
 ```
 
 ## Quick Start
@@ -24,12 +23,15 @@ Handlers receive the request, a custom context, and the captured parameters.
 ```gleam
 import gleam/dict.{type Dict}
 import gleam/http/request.{type Request}
+import gleam/http/response
 import gleam/result
 import fist
 
 fn hello_handler(_req: Request(body), _ctx: MyContext, params: Dict(String, String)) {
   let name = dict.get(params, "name") |> result.unwrap("stranger")
-  fist.ok("Hello, " <> name <> "!")
+  
+  response.new(200)
+  |> response.set_body("Hello, " <> name <> "!")
 }
 ```
 
@@ -44,14 +46,19 @@ pub fn main() {
   let router = 
     fist.new()
     |> fist.get("/hello/:name", to: hello_handler)
-    |> fist.get("/json", to: fn(_, _, _) { fist.json("{\"status\": \"ok\"}") })
+    |> fist.get("/json", to: fn(_, _, _) { 
+      response.new(200)
+      |> response.set_header("content-type", "application/json")
+      |> response.set_body("{\"status\": \"ok\"}") 
+    })
 
   // Example of using the router with a context
   let req = ...
   let ctx = MyContext(...)
   
   fist.handle(router, req, ctx, fn() {
-    fist.text("Not Found") |> response.set_status(404)
+    response.new(404)
+    |> response.set_body("Not Found")
   })
 }
 ```
@@ -60,6 +67,8 @@ pub fn main() {
 Because `fist` is generic over the handler's output, you can use your own Algebraic Data Types and map them.
 
 ```gleam
+import gleam/http/response
+
 pub type MyAnswer {
   Success(String)
   UserFound(User)
@@ -75,9 +84,19 @@ pub fn create_router() {
   |> fist.get("/", to: my_handler)
   |> fist.map(fn(answer) {
     case answer {
-      Success(msg) -> fist.ok(msg)
-      UserFound(user) -> fist.json(user_to_json(user))
-      Error(err) -> fist.text("Error: " <> err)
+      Success(msg) -> {
+        response.new(200) 
+        |> response.set_body(msg)
+      }
+      UserFound(user) -> {
+        response.new(200)
+        |> response.set_header("content-type", "application/json")
+        |> response.set_body(user_to_json(user))
+      }
+      Error(err) -> {
+        response.new(500) 
+        |> response.set_body("Error: " <> err)
+      }
     }
   })
 }
@@ -96,19 +115,24 @@ import gleam/http/response
 pub fn main() {
   let router = 
     fist.new()
-    |> fist.get("/", to: fn(_, _, _) { fist.ok("Hello!") })
+    |> fist.get("/", to: fn(_, _, _) { 
+      response.new(200)
+      |> response.set_body("Hello!") 
+    })
 
   let service = fn(req) {
     let res = fist.handle(router, req, Nil, fn() { 
-      fist.ok("Not Found") |> response.set_status(404) 
+      response.new(404)
+      |> response.set_body("Not Found") 
     })
     
     // Convert your Response(String) to Mist's expected format
-    response.set_body(res, mist.Bytes(bytes_tree.from_string(res.body)))
+    let body = mist.Bytes(bytes_tree.from_string(res.body))
+    response.set_body(res, body)
   }
 
   mist.new(service)
   |> mist.port(8080)
-  |> mist.start()
+  |> mist.start_http()
 }
 ```

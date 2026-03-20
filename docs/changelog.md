@@ -2,6 +2,11 @@
 
 All notable changes to the Fist router.
 
+## v1.3.0
+- **Breaking Change**: Removed response helpers (`fist.ok`, `fist.text`, `fist.json`, `fist.redirect`). Users should now construct their own responses or use `gleam_http` directly, keeping the router focused on routing logic.
+- **Documentation**: Added comprehensive Roadmap and Todo documentation.
+- **Documentation**: Updated documentation theme and internal generation tools.
+
 ## v1.2.0
 - Added initial `Roadmap` and `Todo` documentation.
 - Improved CI/CD for GitHub Pages deployment.
