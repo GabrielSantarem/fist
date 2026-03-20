@@ -1,7 +1,6 @@
 import gleam/dict.{type Dict}
 import gleam/http.{type Method, Delete, Get, Patch, Post, Put}
 import gleam/http/request.{type Request}
-import gleam/http/response.{type Response}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -198,21 +197,7 @@ fn map_node(
   Node(new_handler, new_static, new_dynamic)
 }
 
-// --- Response Helpers ---
-
-/// Creates a 200 OK response with the given body.
-pub fn ok(body: body) -> Response(body) {
-  response.new(200)
-  |> response.set_body(body)
-}
-
-/// Creates a 200 OK response with the given string as body and text/plain content type.
-pub fn text(body: String) -> Response(String) {
-  response.new(200)
-  |> response.set_body(body)
-  |> response.prepend_header("content-type", "text/plain")
-}
-
+/// define a route handler for a given method and path
 pub fn handle(
   router: Router(req_body, ctx, output),
   request: Request(req_body),
