@@ -7,3 +7,8 @@
 
 ## Things to do
 1. Implement a `describe` function that annotates the last added route with a docstring
+```gleam
+  fist.new() 
+  |> fist.get("/hello",to:hello)
+  |> docs.new(desc:"rota hello")
+```
