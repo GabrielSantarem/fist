@@ -26,6 +26,5 @@ mist = ">= 6.0.0 and < 7.0.0"
 [documentation]
 pages = [
   { title = "Roadmap", path = "roadmap.html", source = "docs/roadmap.md" },
-  { title = "Todo", path = "todo.html", source = "docs/todo.md" },
   { title = "Changelog", path = "changelog.html", source = "docs/changelog.md" }
 ]
