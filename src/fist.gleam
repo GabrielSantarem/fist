@@ -213,20 +213,6 @@ pub fn text(body: String) -> Response(String) {
   |> response.prepend_header("content-type", "text/plain")
 }
 
-/// Creates a 200 OK response with the given string as body and application/json content type.
-pub fn json(body: String) -> Response(String) {
-  response.new(200)
-  |> response.set_body(body)
-  |> response.prepend_header("content-type", "application/json")
-}
-
-/// Creates a 302 Found redirect response.
-pub fn redirect(to: String) -> Response(String) {
-  response.new(302)
-  |> response.set_body("")
-  |> response.prepend_header("location", to)
-}
-
 pub fn handle(
   router: Router(req_body, ctx, output),
   request: Request(req_body),
