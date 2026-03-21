@@ -2,6 +2,11 @@
 
 All notable changes to the Fist router.
 
+## v1.4.0
+- **New Feature**: Added `fist.describe` to attach descriptions to routes.
+- **New Feature**: Added `fist.inspect` to retrieve a list of all registered routes with their metadata (path, method, params, description). Useful for generating documentation or debugging.
+- **Documentation**: Added a comprehensive [User Guide](guide.html) with examples for static/dynamic routes, context usage, and more.
+
 ## v1.3.0
 - **Breaking Change**: Removed response helpers (`fist.ok`, `fist.text`, `fist.json`, `fist.redirect`). Users should now construct their own responses or use `gleam_http` directly, keeping the router focused on routing logic.
 - **Documentation**: Added comprehensive Roadmap and Todo documentation.
