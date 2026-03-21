@@ -8,52 +8,60 @@ import gleam/string
 
 // --- TYPES ---
 
+/// Encapsulates the handler logic and its metadata.
+pub type Route(req_body, ctx, output) {
+  Route(
+    handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+    description: Option(String),
+  )
+}
+
 /// A node in the router's internal Trie structure.
-/// This represents a single segment of a URL path.
-///
-/// Example: In the path `/users/:id`, there are two nodes:
-/// 1. "users" (in static_children of root)
-/// 2. ":id" (in dynamic_child of "users")
 pub type Node(req_body, ctx, output) {
   Node(
-    /// If this node represents the end of a valid path, it will have a handler.
-    handler: Option(fn(Request(req_body), ctx, Dict(String, String)) -> output),
+    /// If this node represents the end of a valid path, it will have a Route object.
+    route: Option(Route(req_body, ctx, output)),
     /// Static children are exact string matches (e.g., "users", "settings").
-    /// These are checked FIRST.
     static_children: Dict(String, Node(req_body, ctx, output)),
     /// A dynamic child is a wildcard parameter (e.g., ":id", ":slug").
-    /// This is checked ONLY if no static match is found.
-    /// The string in the tuple is the parameter name (e.g., "id").
     dynamic_child: Option(#(String, Node(req_body, ctx, output))),
   )
 }
 
 /// The main Router type.
-/// It works as a wrapper around a dictionary mapping HTTP Methods to Root Nodes.
-///
-/// - `req_body`: The type of the HTTP request body.
-/// - `ctx`: The custom context type passed to handlers.
-/// - `output`: The return type of the handlers (e.g., Response, String).
 pub opaque type Router(req_body, ctx, output) {
-  Router(routes: Dict(Method, Node(req_body, ctx, output)))
+  Router(
+    routes: Dict(Method, Node(req_body, ctx, output)),
+    /// Tracks the last added route (Method, Segments) to support method chaining like `describe`.
+    last_added: Option(#(Method, List(String))),
+  )
+}
+
+/// Information about a registered route, used for introspection/documentation.
+pub type RouteInfo {
+  RouteInfo(
+    method: Method,
+    path: String,
+    description: String,
+    params: List(String),
+  )
 }
 
 // --- CONSTRUCTORS ---
 
 /// Creates a new, empty router.
 pub fn new() -> Router(req_body, ctx, output) {
-  Router(routes: dict.new())
+  Router(routes: dict.new(), last_added: None)
 }
 
 /// Helper to create an empty Trie node.
 fn empty_node() -> Node(req_body, ctx, output) {
-  Node(handler: None, static_children: dict.new(), dynamic_child: None)
+  Node(route: None, static_children: dict.new(), dynamic_child: None)
 }
 
 // --- INTERNAL LOGIC ---
 
 /// Splits a path string into segments, ignoring empty strings.
-/// "/users//123" -> ["users", "123"]
 fn parse_path(path: String) -> List(String) {
   path
   |> string.split("/")
@@ -61,28 +69,27 @@ fn parse_path(path: String) -> List(String) {
 }
 
 /// Recursively inserts a route into the Trie.
-/// Handles the distinction between static segments ("users") and dynamic ones (":id").
 fn insert_route(
   node: Node(req_body, ctx, output),
   segments: List(String),
   handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
 ) -> Node(req_body, ctx, output) {
   case segments {
-    // End of recursion: we reached the target node. Set the handler.
-    [] -> Node(..node, handler: Some(handler))
+    [] -> {
+      // Create a new Route record, preserving existing description if updating (though usually new)
+      let new_route = Route(handler: handler, description: None)
+      Node(..node, route: Some(new_route))
+    }
 
-    // Dynamic Segment (starts with ":")
     [":" <> param_name, ..rest] -> {
       let child = case node.dynamic_child {
         Some(#(_, child_node)) -> child_node
         None -> empty_node()
       }
       let updated_child = insert_route(child, rest, handler)
-      // Note: We overwrite the param name if it was different, but that's expected behavior
       Node(..node, dynamic_child: Some(#(param_name, updated_child)))
     }
 
-    // Static Segment
     [segment, ..rest] -> {
       let child =
         dict.get(node.static_children, segment) |> result.unwrap(empty_node())
@@ -99,8 +106,48 @@ fn insert_route(
   }
 }
 
+/// Recursively updates a specific route node to add a description.
+fn update_description(
+  node: Node(req_body, ctx, output),
+  segments: List(String),
+  desc: String,
+) -> Node(req_body, ctx, output) {
+  case segments {
+    [] -> {
+      case node.route {
+        Some(r) ->
+          Node(..node, route: Some(Route(..r, description: Some(desc))))
+        None -> node
+        // Should not happen if logic is correct
+      }
+    }
+
+    [":" <> _, ..rest] -> {
+      case node.dynamic_child {
+        Some(#(p, child)) -> {
+          let updated = update_description(child, rest, desc)
+          Node(..node, dynamic_child: Some(#(p, updated)))
+        }
+        None -> node
+      }
+    }
+
+    [segment, ..rest] -> {
+      case dict.get(node.static_children, segment) {
+        Ok(child) -> {
+          let updated = update_description(child, rest, desc)
+          Node(
+            ..node,
+            static_children: dict.insert(node.static_children, segment, updated),
+          )
+        }
+        Error(_) -> node
+      }
+    }
+  }
+}
+
 /// Recursively traverses the Trie to find a matching handler.
-/// Implements priority logic: Static Match > Dynamic Match.
 fn find_route(
   node: Node(req_body, ctx, output),
   segments: List(String),
@@ -113,30 +160,24 @@ fn find_route(
   Nil,
 ) {
   case segments {
-    // End of path: check if this node has a handler attached.
     [] -> {
-      case node.handler {
-        Some(handler) -> Ok(#(handler, params))
+      case node.route {
+        Some(r) -> Ok(#(r.handler, params))
         None -> Error(Nil)
       }
     }
 
     [segment, ..rest] -> {
-      // 1. Try to find a static child with the exact segment name.
       let static_match = case dict.get(node.static_children, segment) {
         Ok(child) -> find_route(child, rest, params)
         Error(Nil) -> Error(Nil)
       }
 
       case static_match {
-        // If static match found (recursively), return it.
         Ok(match) -> Ok(match)
-
-        // 2. If NO static match, check if there is a dynamic wildcard child.
         Error(Nil) -> {
           case node.dynamic_child {
             Some(#(param_name, child)) -> {
-              // Capture the parameter (e.g., id="123")
               let new_params = dict.insert(params, param_name, segment)
               find_route(child, rest, new_params)
             }
@@ -160,7 +201,27 @@ pub fn route(
   let segments = parse_path(path)
   let root = dict.get(router.routes, method) |> result.unwrap(empty_node())
   let updated_root = insert_route(root, segments, handler)
-  Router(routes: dict.insert(router.routes, method, updated_root))
+
+  Router(
+    routes: dict.insert(router.routes, method, updated_root),
+    last_added: Some(#(method, segments)),
+  )
+}
+
+/// Adds a description to the last added route.
+/// This enables the chaining syntax: `|> fist.get(...) |> fist.describe("...")`
+pub fn describe(
+  router: Router(req_body, ctx, output),
+  description: String,
+) -> Router(req_body, ctx, output) {
+  case router.last_added {
+    Some(#(method, segments)) -> {
+      let root = dict.get(router.routes, method) |> result.unwrap(empty_node())
+      let updated_root = update_description(root, segments, description)
+      Router(..router, routes: dict.insert(router.routes, method, updated_root))
+    }
+    None -> router
+  }
 }
 
 /// Adds a GET route to the router.
@@ -211,49 +272,41 @@ pub fn patch(
 // --- TRANSFORMATION ---
 
 /// Transforms the output of the router using a mapping function.
-/// Useful for wrapping results, logging, or type conversion.
 pub fn map(
   router: Router(req_body, ctx, a),
   with fun: fn(a) -> b,
 ) -> Router(req_body, ctx, b) {
   let new_routes =
     dict.map_values(router.routes, fn(_, node) { map_node(node, fun) })
-  Router(routes: new_routes)
+  Router(routes: new_routes, last_added: None)
 }
 
-/// Helper to recursively map over the Trie nodes.
 fn map_node(
   node: Node(req_body, ctx, a),
   fun: fn(a) -> b,
 ) -> Node(req_body, ctx, b) {
-  // Map the handler if it exists
-  let new_handler =
-    option.map(node.handler, fn(h) {
-      fn(req, ctx, params) { h(req, ctx, params) |> fun }
+  let new_route =
+    option.map(node.route, fn(r) {
+      let new_handler = fn(req, ctx, params) {
+        r.handler(req, ctx, params) |> fun
+      }
+      Route(handler: new_handler, description: r.description)
     })
 
-  // Recursively map static children
   let new_static =
     dict.map_values(node.static_children, fn(_, child) { map_node(child, fun) })
 
-  // Recursively map dynamic child
   let new_dynamic =
     option.map(node.dynamic_child, fn(pair) {
       let #(name, child) = pair
       #(name, map_node(child, fun))
     })
 
-  Node(new_handler, new_static, new_dynamic)
+  Node(new_route, new_static, new_dynamic)
 }
 
 // --- EXECUTION ---
 
-/// Handles an incoming request using the defined router.
-///
-/// 1. Identifies the HTTP method.
-/// 2. Parses the path.
-/// 3. Traverses the Trie to find a matching handler.
-/// 4. Executes the handler or the `not_found` fallback.
 pub fn handle(
   router: Router(req_body, ctx, output),
   request: Request(req_body),
@@ -271,4 +324,60 @@ pub fn handle(
     Ok(#(handler, params)) -> handler(request, context, params)
     Error(_) -> not_found()
   }
+}
+
+// --- INTROSPECTION ---
+
+fn inspect_node(
+  node: Node(req_body, ctx, output),
+  method: Method,
+  path_acc: List(String),
+  params_acc: List(String),
+) -> List(RouteInfo) {
+  // 1. Current node info
+  let current_info = case node.route {
+    Some(r) -> [
+      RouteInfo(
+        method: method,
+        path: "/" <> string.join(path_acc, "/"),
+        description: option.unwrap(r.description, ""),
+        params: params_acc,
+      ),
+    ]
+    None -> []
+  }
+
+  // 2. Static children
+  let static_infos =
+    dict.to_list(node.static_children)
+    |> list.flat_map(fn(pair) {
+      let #(segment, child) = pair
+      inspect_node(child, method, list.append(path_acc, [segment]), params_acc)
+    })
+
+  // 3. Dynamic child
+  let dynamic_infos = case node.dynamic_child {
+    Some(#(param_name, child)) -> {
+      inspect_node(
+        child,
+        method,
+        list.append(path_acc, [":" <> param_name]),
+        list.append(params_acc, [param_name]),
+      )
+    }
+    None -> []
+  }
+
+  list.flatten([current_info, static_infos, dynamic_infos])
+}
+
+/// Returns a list of all registered routes with their metadata.
+/// Useful for generating documentation (OpenAPI) or debugging.
+pub fn inspect(router: Router(req_body, ctx, output)) -> List(RouteInfo) {
+  router.routes
+  |> dict.to_list
+  |> list.flat_map(fn(pair) {
+    let #(method, root_node) = pair
+    inspect_node(root_node, method, [], [])
+  })
 }
