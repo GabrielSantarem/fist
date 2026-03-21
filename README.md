@@ -12,7 +12,7 @@ A declarative, functional router for Gleam.
 ## Installation
 Add `fist` to your `gleam.toml`:
 ```sh
-gleam add fist
+gleam add fist@1
 ```
 
 ## Quick Start
