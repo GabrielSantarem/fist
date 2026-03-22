@@ -26,6 +26,9 @@ mist = ">= 6.0.0 and < 7.0.0"
 [documentation]
 pages = [
   { title = "User Guide", path = "guide.html", source = "docs/guide.md" },
+  { title = "Core Concepts", path = "behavior.html", source = "docs/behavior.md" },
+  { title = "Advanced Patterns", path = "advanced.html", source = "docs/advanced.md" },
+  { title = "Integration", path = "integration.html", source = "docs/integration.md" },
   { title = "Roadmap", path = "roadmap.html", source = "docs/roadmap.md" },
   { title = "Changelog", path = "changelog.html", source = "docs/changelog.md" }
 ]
