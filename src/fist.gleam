@@ -271,6 +271,46 @@ pub fn patch(
 
 // --- TRANSFORMATION ---
 
+/// Transforms the context of the router using a mapping function.
+/// This is the foundation for context polymorphism, allowing a sub-router
+/// that expects a specific context to be used within a parent router with a different context.
+pub fn map_context(
+  router: Router(req_body, ctx_b, output),
+  with mapper: fn(ctx_a) -> ctx_b,
+) -> Router(req_body, ctx_a, output) {
+  let new_routes =
+    dict.map_values(router.routes, fn(_, node) {
+      map_node_context(node, mapper)
+    })
+  Router(routes: new_routes, last_added: None)
+}
+
+fn map_node_context(
+  node: Node(req_body, ctx_b, output),
+  mapper: fn(ctx_a) -> ctx_b,
+) -> Node(req_body, ctx_a, output) {
+  let new_route =
+    option.map(node.route, fn(r) {
+      let new_handler = fn(req, ctx_a, params) {
+        r.handler(req, mapper(ctx_a), params)
+      }
+      Route(handler: new_handler, description: r.description)
+    })
+
+  let new_static =
+    dict.map_values(node.static_children, fn(_, child) {
+      map_node_context(child, mapper)
+    })
+
+  let new_dynamic =
+    option.map(node.dynamic_child, fn(pair) {
+      let #(name, child) = pair
+      #(name, map_node_context(child, mapper))
+    })
+
+  Node(new_route, new_static, new_dynamic)
+}
+
 /// Transforms the output of the router using a mapping function.
 pub fn map(
   router: Router(req_body, ctx, a),
@@ -303,6 +343,73 @@ fn map_node(
     })
 
   Node(new_route, new_static, new_dynamic)
+}
+
+// --- COMPOSITION ---
+
+/// Recursively merges two nodes. If both have a route, the second one (b) wins.
+fn merge_nodes(
+  a: Node(req, ctx, out),
+  b: Node(req, ctx, out),
+) -> Node(req, ctx, out) {
+  let route = option.or(b.route, a.route)
+
+  let static_children =
+    dict.combine(a.static_children, b.static_children, merge_nodes)
+
+  let dynamic_child = case a.dynamic_child, b.dynamic_child {
+    Some(#(_, child_a)), Some(#(name_b, child_b)) -> {
+      // Prefer the parameter name from the new tree (b)
+      Some(#(name_b, merge_nodes(child_a, child_b)))
+    }
+    None, some_b -> some_b
+    some_a, None -> some_a
+  }
+
+  Node(route, static_children, dynamic_child)
+}
+
+/// Creates a new tree from a list of segments that leads to the given sub-tree.
+fn prefix_node(
+  segments: List(String),
+  sub_tree: Node(req, ctx, out),
+) -> Node(req, ctx, out) {
+  case segments {
+    [] -> sub_tree
+    [segment, ..rest] -> {
+      let child = prefix_node(rest, sub_tree)
+      let empty = empty_node()
+      Node(..empty, static_children: dict.from_list([#(segment, child)]))
+    }
+  }
+}
+
+/// Mounts a sub-router at a specific prefix, transforming its context to match the parent.
+/// This enables modular routing and context polymorphism.
+pub fn mount(
+  parent: Router(req, ctx_a, out),
+  at prefix: String,
+  sub sub_router: Router(req, ctx_b, out),
+  transform mapper: fn(ctx_a) -> ctx_b,
+) -> Router(req, ctx_a, out) {
+  let sub_router = map_context(sub_router, mapper)
+  let prefix_segments = parse_path(prefix)
+
+  dict.to_list(sub_router.routes)
+  |> list.fold(parent, fn(acc_router, method_pair) {
+    let #(method, sub_tree) = method_pair
+    let parent_root =
+      dict.get(acc_router.routes, method) |> result.unwrap(empty_node())
+
+    // Create a prefixed version of the sub_tree and merge it into parent
+    let prefixed_sub_tree = prefix_node(prefix_segments, sub_tree)
+    let merged_root = merge_nodes(parent_root, prefixed_sub_tree)
+
+    Router(
+      ..acc_router,
+      routes: dict.insert(acc_router.routes, method, merged_root),
+    )
+  })
 }
 
 // --- EXECUTION ---
