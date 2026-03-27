@@ -23,4 +23,10 @@ Quick notes on the project's direction and upcoming features.
 
 ## Things to Think About / Research
 
+- **Middleware Architectures**:
+  - **Static Wrapping (Chosen)**: Middleware is applied at definition time by wrapping handlers recursively.
+    - *Pros*: Maximum performance (zero search overhead), type-safe, simple implementation.
+    - *Syntax*: `router |> fist.wrap(middleware)` or `router |> fist.group(..., [middleware], ...)`.
+  - **On-Traversal (Discarded)**: Middleware stored in Trie nodes and executed during route search.
+    - *Cons*: Higher complexity, performance hit during search, harder to maintain type safety.
 - **Extractors / Typed Parameters**: Explore a way to inject extracted, typed parameters directly into handlers (e.g., receiving `id: Int` instead of parsing `params: Dict`), likely via adapter function or something else.

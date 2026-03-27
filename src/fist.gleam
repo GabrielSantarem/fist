@@ -412,6 +412,65 @@ pub fn mount(
   })
 }
 
+/// Wraps all handlers in the router with the given middleware.
+/// A middleware is a function that takes a handler and returns a new, wrapped handler.
+pub fn wrap(
+  router: Router(req, ctx, out),
+  with middleware: fn(
+    fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
+  ) ->
+    fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
+) -> Router(req, ctx, out) {
+  let new_routes =
+    dict.map_values(router.routes, fn(_, node) { wrap_node(node, middleware) })
+  Router(..router, routes: new_routes)
+}
+
+fn wrap_node(
+  node: Node(req, ctx, out),
+  middleware: fn(
+    fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
+  ) ->
+    fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
+) -> Node(req, ctx, out) {
+  let new_route =
+    option.map(node.route, fn(r) {
+      Route(handler: middleware(r.handler), description: r.description)
+    })
+
+  let new_static =
+    dict.map_values(node.static_children, fn(_, child) {
+      wrap_node(child, middleware)
+    })
+
+  let new_dynamic =
+    option.map(node.dynamic_child, fn(pair) {
+      let #(name, child) = pair
+      #(name, wrap_node(child, middleware))
+    })
+
+  Node(new_route, new_static, new_dynamic)
+}
+
+/// Groups a set of routes under a common prefix and applies middlewares.
+/// Middleware is applied at definition time (Static Wrapping).
+pub fn group(
+  router: Router(req, ctx, out),
+  at prefix: String,
+  with middlewares: List(
+    fn(fn(request.Request(req), ctx, dict.Dict(String, String)) -> out) ->
+      fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
+  ),
+  defining build_sub_router: fn(Router(req, ctx, out)) -> Router(req, ctx, out),
+) -> Router(req, ctx, out) {
+  let sub_router =
+    list.fold(middlewares, build_sub_router(new()), fn(acc_r, mw) {
+      wrap(acc_r, mw)
+    })
+
+  mount(router, at: prefix, sub: sub_router, transform: fn(c) { c })
+}
+
 // --- EXECUTION ---
 
 pub fn handle(
