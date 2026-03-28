@@ -12,11 +12,11 @@ pub fn wrap_performance_test() {
     fist.new()
     |> fist.get("/ping", fn(_, _, _) { "pong" })
     // Aplica o middleware 5 vezes na travessia
-    |> fist.with_middleware(middleware)
-    |> fist.with_middleware(middleware)
-    |> fist.with_middleware(middleware)
-    |> fist.with_middleware(middleware)
-    |> fist.with_middleware(middleware)
+    |> fist.wrap(middleware)
+    |> fist.wrap(middleware)
+    |> fist.wrap(middleware)
+    |> fist.wrap(middleware)
+    |> fist.wrap(middleware)
 
   let req =
     request.new() |> request.set_method(Get) |> request.set_path("/ping")
