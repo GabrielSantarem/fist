@@ -3,10 +3,14 @@ A declarative, functional router for Gleam.
 
 ## Features
 - **Declarative API**: Build your router with a clean, chainable syntax: `fist.get("/", to: handler)`.
+- **Flexible Middleware**: Apply logic at the route, group, or global level using functional wrapping with `fist.wrap`.
+- **Context Polymorphism**: Use `mount` and `map_context` to combine routers with different context types seamlessly.
+- **Route Groups**: Cleanly organize routes with prefixes and shared middlewares using `fist.group`.
 - **Dynamic Routing**: Capture URL parameters with `:parameter_name`.
 - **Generic Context**: Pass any context (database connections, config, etc.) to your handlers without rebuilding the router.
 - **Generic Output**: Handlers can return anything (`Response`, `String`, or your own custom types).
 - **Transformation Pipeline**: Use `fist.map` to transform your router's output globally.
+- **Tree-based Routing (Trie)**: High-performance routing that scales with your application.
 - **Pure Gleam**: No mandatory dependencies on specific web servers. Works with anything that uses the standard `gleam/http` types.
 
 ## Installation

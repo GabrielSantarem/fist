@@ -39,11 +39,9 @@ pub fn main() {
 }
 ```
 
-## Functional Middleware
+## Route Wrapping (Middlewares)
 
-Fist does not yet have a dedicated API for middleware composition. However, you can achieve similar results by composing functions.
-
-A middleware can be thought of as a function that takes a handler and returns a new handler.
+Fist provides the `fist.wrap` function to apply a middleware to all existing routes in a router. A middleware is a function that takes a handler and returns a new handler.
 
 ### Authentication Example
 
@@ -64,10 +62,43 @@ fn require_auth(
 pub fn main() {
   fist.new()
   |> fist.get("/public", to: public_handler)
-  // Wrap the handler with the middleware function
-  |> fist.get("/admin", to: require_auth(admin_handler))
+  // Wrap all routes defined ABOVE this line with the middleware
+  |> fist.wrap(require_auth)
+  // Routes defined BELOW this line will NOT have the middleware
+  |> fist.get("/login", to: login_handler)
 }
 ```
+
+## Context Polymorphism with `mount`
+
+One of Fist's most powerful features is the ability to combine routers with different context requirements. This is achieved through `mount` and `map_context`.
+
+Imagine you have an admin router that requires an `AdminUser` context, but your main router has a `Nil` context:
+
+```gleam
+// admin.gleam
+pub type AdminContext { AdminContext(user: User) }
+
+pub fn admin_router() {
+  fist.new()
+  |> fist.get("/dashboard", show_dashboard) // Expects AdminContext
+}
+
+// main.gleam
+pub fn main_router() {
+  fist.new()
+  |> fist.mount(
+    at: "/admin",
+    sub: admin.admin_router(),
+    transform: fn(_nil_ctx) {
+      // Logic to transform Root Context to AdminContext
+      AdminContext(user: get_current_user())
+    }
+  )
+}
+```
+
+This allows for true modularity and isolation of concerns across your application.
 
 ## Context & State Management
 
