@@ -58,6 +58,32 @@ pub fn main() {
 }
 ```
 
+## Route Groups and Middlewares
+
+Fist allows you to group routes under a common prefix and apply middlewares to them. A middleware is a function that wraps a handler:
+
+```gleam
+fn auth_middleware(next) {
+  fn(req, ctx, params) {
+    case is_authenticated(req) {
+      True -> next(req, ctx, params)
+      False -> response.new(401)
+    }
+  }
+}
+
+pub fn main() {
+  fist.new()
+  |> fist.group(at: "/api/v1", with: [auth_middleware], defining: fn(v1) {
+    v1
+    |> fist.get("/users", list_users)
+    |> fist.post("/users", create_user)
+  })
+}
+```
+
+Middlewares are applied at definition time (Static Wrapping), ensuring zero performance overhead during route lookup.
+
 ## Route Metadata & Documentation
 
 Fist allows you to attach descriptions to routes. This is useful for generating documentation automatically.

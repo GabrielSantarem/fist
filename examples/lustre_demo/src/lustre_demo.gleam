@@ -1,7 +1,6 @@
 import fist
 import gleam/bytes_tree
 import gleam/erlang/process
-import gleam/http/request
 import gleam/http/response
 import home
 import lustre/element
