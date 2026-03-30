@@ -6,7 +6,7 @@ version = "1.5.0"
 #
 description = "a pure, declarative router for Gleam"
 licences = ["Apache-2.0"]
-repository = { type = "github", user = "MrTomatePNG", repo = "fist" }
+repository = { type = "codeberg", user = "MrTomate", repo = "fist" }
 # links = [{ title = "Website", href = "" }]
 #
 # For a full reference of all the available options, you can have a look at
