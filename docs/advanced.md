@@ -69,6 +69,27 @@ pub fn main() {
 }
 ```
 
+## Route Metadata (`describe`)
+
+Fist allows you to attach descriptions to routes. However, note that the `describe` function relies on the **previously added route**. 
+
+**⚠️ Chaining Break:**
+Functions that transform the entire router (like `map` or `map_context`) clear the "last added route" state. **You must call `describe` immediately after the route definition.**
+
+```gleam
+// ✅ Correct
+router
+|> fist.get("/users", list_users)
+|> fist.describe("List users")
+|> fist.map(my_mapper)
+
+// ❌ Incorrect (Description will be ignored)
+router
+|> fist.get("/users", list_users)
+|> fist.map(my_mapper)
+|> fist.describe("List users")
+```
+
 ## Context Polymorphism with `mount`
 
 One of Fist's most powerful features is the ability to combine routers with different context requirements. This is achieved through `mount` and `map_context`.

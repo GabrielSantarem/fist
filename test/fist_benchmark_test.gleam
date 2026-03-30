@@ -10,7 +10,7 @@ fn middleware(next) {
 }
 
 // 1. TESTE DE ESTRESSE: 100 middlewares
-pub fn heavy_middleware_strees_test() {
+pub fn heavy_middleware_stress_test() {
   let router =
     fist.new()
     |> fist.get("/ping", fn(_, _, _) { "pong" })

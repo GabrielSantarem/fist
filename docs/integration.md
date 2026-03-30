@@ -43,8 +43,11 @@ pub fn main() {
 
         // Use Mist's efficient file sender
         mist.send_file(path, offset: 0, limit: None)
-        // If file not found, return 404 immediately
-        |> result.unwrap(response.new(404))
+        // If file not found, return 404 response
+        |> result.map(fn(res) { res })
+        |> result.lazy_unwrap(fn() {
+          response.new(404) |> response.set_body(mist.Bytes(bytes_tree.new()))
+        })
       }
 
       False -> {

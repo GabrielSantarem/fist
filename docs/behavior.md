@@ -29,20 +29,22 @@ When a request matches multiple possibilities (e.g., a static route and a wildca
 
 ### The "Same Level" Constraint
 
-Because of the Trie structure, **you cannot register two different dynamic parameter names at the exact same position in the tree**. The last one defined will overwrite the previous one.
+Because of the Trie structure, **you cannot register two different dynamic parameter names at the exact same position in the tree**. 
 
-**❌ Incorrect (Conflict):**
+If you do, the last one defined will **overwrite** the parameter name for all handlers at that position.
+
+**❌ Conflicting (Last one wins):**
 ```gleam
 fist.new()
-|> fist.get("/api/:user_id", handler_a)
-|> fist.get("/api/:product_id", handler_b)
-// Error: Any request to /api/123 will be routed to handler_b,
-// and the parameter will be named "product_id".
+|> fist.get("/api/:user_id/posts", handler_a)
+|> fist.get("/api/:id/settings", handler_b)
+// Result: Both handlers will receive "id" as the parameter key.
+// In handler_a, dict.get(params, "user_id") will return Error(Nil).
 ```
 
-**✅ Correct (Namespacing):**
+**✅ Recommended (Unique names or prefixes):**
 ```gleam
 fist.new()
-|> fist.get("/users/:user_id", handler_a)
-|> fist.get("/products/:product_id", handler_b)
+|> fist.get("/users/:user_id/posts", handler_a)
+|> fist.get("/products/:product_id/settings", handler_b)
 ```
