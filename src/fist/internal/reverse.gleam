@@ -9,6 +9,43 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
+/// Compares two lists of template segments to check if they have identical path structures.
+pub fn same_segment_shapes(
+  a: List(TemplateSegment),
+  b: List(TemplateSegment),
+) -> Bool {
+  case a, b {
+    [], [] -> True
+    [StaticSegment(sa), ..rest_a], [StaticSegment(sb), ..rest_b] if sa == sb ->
+      same_segment_shapes(rest_a, rest_b)
+    [DynamicSegment(pa, _), ..rest_a], [DynamicSegment(pb, _), ..rest_b]
+      if pa == pb
+    -> same_segment_shapes(rest_a, rest_b)
+    [WildcardSegment(wa), ..rest_a], [WildcardSegment(wb), ..rest_b]
+      if wa == wb
+    -> same_segment_shapes(rest_a, rest_b)
+    _, _ -> False
+  }
+}
+
+/// Converts a list of template segments into a human-readable path string (e.g. "/users/:id/profile").
+pub fn segments_to_string(segments: List(TemplateSegment)) -> String {
+  case segments {
+    [] -> "/"
+    _ -> {
+      let parts =
+        list.map(segments, fn(seg) {
+          case seg {
+            StaticSegment(s) -> s
+            DynamicSegment(name, _) -> ":" <> name
+            WildcardSegment(name) -> "*" <> name
+          }
+        })
+      "/" <> string.join(parts, "/")
+    }
+  }
+}
+
 /// Extracts reverse-routable template segments by walking raw path segments alongside the Trie.
 pub fn extract_template_segments(
   segments: List(String),
@@ -53,6 +90,10 @@ pub fn extract_template_segments(
 }
 
 /// Assigns a unique name to the last added route in the router.
+///
+/// If the same name is registered to the exact same path template (e.g. for multiple HTTP methods
+/// sharing a canonical resource URL), the registration is accepted idempotently.
+/// If the name is registered to a conflicting path template, it panics immediately.
 pub fn name_route(
   router: Router(req, ctx, out),
   name: String,
@@ -60,16 +101,6 @@ pub fn name_route(
   case string.trim(name) {
     "" -> panic as "Invalid route name: route name cannot be empty"
     _ -> Nil
-  }
-
-  case dict.has_key(router.named_routes, name) {
-    True ->
-      panic as string.concat([
-          "Route name collision: route '",
-          name,
-          "' is already registered",
-        ])
-    False -> Nil
   }
 
   case router.last_added {
@@ -80,11 +111,34 @@ pub fn name_route(
       let root_node =
         dict.get(router.routes, method) |> result.unwrap(empty_node())
       let template_segments = extract_template_segments(segments, root_node)
-      let template =
-        RouteTemplate(name: name, method: method, segments: template_segments)
 
-      let updated_named = dict.insert(router.named_routes, name, template)
-      Router(..router, named_routes: updated_named)
+      case dict.get(router.named_routes, name) {
+        Ok(existing) -> {
+          case same_segment_shapes(existing.segments, template_segments) {
+            True -> router
+            False ->
+              panic as string.concat([
+                  "Route name collision: route '",
+                  name,
+                  "' is already registered to a different path '",
+                  segments_to_string(existing.segments),
+                  "', cannot redefine as '",
+                  segments_to_string(template_segments),
+                  "'",
+                ])
+          }
+        }
+        Error(Nil) -> {
+          let template =
+            RouteTemplate(
+              name: name,
+              method: method,
+              segments: template_segments,
+            )
+          let updated_named = dict.insert(router.named_routes, name, template)
+          Router(..router, named_routes: updated_named)
+        }
+      }
     }
   }
 }
@@ -162,17 +216,24 @@ pub fn mount_named_routes(
   dict.to_list(sub_named)
   |> list.fold(parent_named, fn(acc, pair) {
     let #(name, template) = pair
-    case dict.has_key(acc, name) {
-      True ->
-        panic as string.concat([
-            "Route name collision on mount: '",
-            name,
-            "' is already registered in parent router",
-          ])
-      False -> {
-        let prefixed = prefix_template(prefix_segments, template)
-        dict.insert(acc, name, prefixed)
+    let prefixed = prefix_template(prefix_segments, template)
+    case dict.get(acc, name) {
+      Ok(existing) -> {
+        case same_segment_shapes(existing.segments, prefixed.segments) {
+          True -> acc
+          False ->
+            panic as string.concat([
+                "Route name collision on mount: route '",
+                name,
+                "' is already registered to '",
+                segments_to_string(existing.segments),
+                "' in parent, cannot mount as '",
+                segments_to_string(prefixed.segments),
+                "'",
+              ])
+        }
       }
+      Error(Nil) -> dict.insert(acc, name, prefixed)
     }
   })
 }
@@ -185,14 +246,23 @@ pub fn merge_named_routes(
   dict.to_list(b_named)
   |> list.fold(a_named, fn(acc, pair) {
     let #(name, template) = pair
-    case dict.has_key(acc, name) {
-      True ->
-        panic as string.concat([
-            "Route name collision on merge: '",
-            name,
-            "' is registered in both routers",
-          ])
-      False -> dict.insert(acc, name, template)
+    case dict.get(acc, name) {
+      Ok(existing) -> {
+        case same_segment_shapes(existing.segments, template.segments) {
+          True -> acc
+          False ->
+            panic as string.concat([
+                "Route name collision on merge: route '",
+                name,
+                "' is registered to conflicting paths ('",
+                segments_to_string(existing.segments),
+                "' vs '",
+                segments_to_string(template.segments),
+                "')",
+              ])
+        }
+      }
+      Error(Nil) -> dict.insert(acc, name, template)
     }
   })
 }

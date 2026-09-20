@@ -1,4 +1,5 @@
 import fist/internal/inspect
+import fist/internal/reverse
 import fist/internal/trie
 import fist/internal/types.{
   DynamicSegment, StaticSegment, WildcardSegment, path_registry_routes,
@@ -282,6 +283,27 @@ pub fn path_from(
   }
 }
 
+/// Checks if a route name is registered in the PathRegistry.
+pub fn has_path(registry: PathRegistry, name: String) -> Bool {
+  dict.has_key(path_registry_routes(registry), name)
+}
+
+/// Returns a list of all registered route names in the PathRegistry.
+pub fn path_names(registry: PathRegistry) -> List(String) {
+  dict.keys(path_registry_routes(registry))
+}
+
+/// Returns the canonical path template string for a registered route name (e.g. "/users/:id").
+pub fn path_template(
+  registry: PathRegistry,
+  name: String,
+) -> Result(String, Nil) {
+  case dict.get(path_registry_routes(registry), name) {
+    Ok(template) -> Ok(reverse.segments_to_string(template.segments))
+    Error(Nil) -> Error(Nil)
+  }
+}
+
 fn do_render_path(
   remaining_segments: List(types.TemplateSegment),
   all_params: List(#(String, String)),
@@ -329,10 +351,36 @@ fn do_render_path(
         Error(Nil) ->
           Error(MissingParameter(route: route_name, missing: param_name))
         Ok(val) -> {
-          case guard_opt {
-            Some(predicate) -> {
-              case predicate(val) {
-                True -> {
+          case val == "" {
+            True ->
+              Error(InvalidParameter(
+                route: route_name,
+                param: param_name,
+                value: "",
+              ))
+            False -> {
+              case guard_opt {
+                Some(predicate) -> {
+                  case predicate(val) {
+                    True -> {
+                      let encoded = uri.percent_encode(val)
+                      do_render_path(
+                        rest,
+                        all_params,
+                        route_name,
+                        [encoded, ..path_acc],
+                        [param_name, ..used_param_names],
+                      )
+                    }
+                    False ->
+                      Error(InvalidParameter(
+                        route: route_name,
+                        param: param_name,
+                        value: val,
+                      ))
+                  }
+                }
+                None -> {
                   let encoded = uri.percent_encode(val)
                   do_render_path(
                     rest,
@@ -342,23 +390,7 @@ fn do_render_path(
                     [param_name, ..used_param_names],
                   )
                 }
-                False ->
-                  Error(InvalidParameter(
-                    route: route_name,
-                    param: param_name,
-                    value: val,
-                  ))
               }
-            }
-            None -> {
-              let encoded = uri.percent_encode(val)
-              do_render_path(
-                rest,
-                all_params,
-                route_name,
-                [encoded, ..path_acc],
-                [param_name, ..used_param_names],
-              )
             }
           }
         }
@@ -370,11 +402,24 @@ fn do_render_path(
         Error(Nil) ->
           Error(MissingParameter(route: route_name, missing: param_name))
         Ok(val) -> {
-          let encoded = encode_wildcard_path(val)
-          do_render_path(rest, all_params, route_name, [encoded, ..path_acc], [
-            param_name,
-            ..used_param_names
-          ])
+          case val == "" {
+            True ->
+              Error(InvalidParameter(
+                route: route_name,
+                param: param_name,
+                value: "",
+              ))
+            False -> {
+              let encoded = encode_wildcard_path(val)
+              do_render_path(
+                rest,
+                all_params,
+                route_name,
+                [encoded, ..path_acc],
+                [param_name, ..used_param_names],
+              )
+            }
+          }
         }
       }
     }

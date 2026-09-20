@@ -352,3 +352,132 @@ pub fn decoupled_handler_usage_test() {
   fist.handle(router, req, app_ctx, fn() { "404" })
   |> should.equal("redirect to /users/99")
 }
+
+/// Idempotent Route Name Sharing Across Methods:
+/// If GET and POST register the exact same canonical path template under the same name,
+/// it is accepted idempotently without collision.
+pub fn same_path_different_methods_idempotent_name_test() {
+  let router =
+    fist.new()
+    |> fist.get("/users/:id", fn(_, _, _) { "get" })
+    |> fist.name("user")
+    |> fist.post("/users/:id", fn(_, _, _) { "post" })
+    |> fist.name("user")
+
+  fist.path(router, for: "user", with: [#("id", "50")])
+  |> should.equal(Ok("/users/50"))
+}
+
+/// Fail-Fast: Conflicting Path with Same Route Name:
+/// If two completely different route paths attempt to register under the same name,
+/// it panics immediately.
+pub fn conflicting_path_same_name_panics_test() {
+  support.rescue(fn() {
+    fist.new()
+    |> fist.get("/users/:id", fn(_, _, _) { "users" })
+    |> fist.name("item")
+    |> fist.get("/products/:id", fn(_, _, _) { "products" })
+    |> fist.name("item")
+  })
+  |> should.be_error
+}
+
+/// Multiple Names on Same Route Act as Aliases:
+/// Calling `fist.name` multiple times on the same route registers aliases.
+pub fn multiple_names_on_same_route_alias_test() {
+  let router =
+    fist.new()
+    |> fist.get("/members/:id", fn(_, _, _) { "member" })
+    |> fist.name("member_show")
+    |> fist.name("user_show")
+
+  fist.path(router, for: "member_show", with: [#("id", "12")])
+  |> should.equal(Ok("/members/12"))
+
+  fist.path(router, for: "user_show", with: [#("id", "12")])
+  |> should.equal(Ok("/members/12"))
+}
+
+/// Dynamic Parameter Cannot Be Empty:
+/// Supplying an empty string `""` for a dynamic parameter returns `InvalidParameter`.
+pub fn empty_dynamic_parameter_value_rejected_test() {
+  let router =
+    fist.new()
+    |> fist.get("/posts/:id", fn(_, _, _) { "post" })
+    |> fist.name("post")
+
+  fist.path(router, for: "post", with: [#("id", "")])
+  |> should.equal(
+    Error(InvalidParameter(route: "post", param: "id", value: "")),
+  )
+}
+
+/// Wildcard Parameter Cannot Be Empty:
+/// Supplying an empty string `""` for a wildcard parameter returns `InvalidParameter`.
+pub fn empty_wildcard_parameter_value_rejected_test() {
+  let router =
+    fist.new()
+    |> fist.get("/assets/*path", fn(_, _, _) { "asset" })
+    |> fist.name("asset")
+
+  fist.path(router, for: "asset", with: [#("path", "")])
+  |> should.equal(
+    Error(InvalidParameter(route: "asset", param: "path", value: "")),
+  )
+}
+
+/// Path Injection Defense:
+/// Slashes inside dynamic parameters are percent-encoded to prevent path structure corruption.
+pub fn path_injection_attempt_encoded_safely_test() {
+  let router =
+    fist.new()
+    |> fist.get("/users/:id/edit", fn(_, _, _) { "edit" })
+    |> fist.name("user_edit")
+
+  fist.path(router, for: "user_edit", with: [#("id", "42/delete/all")])
+  |> should.equal(Ok("/users/42%2Fdelete%2Fall/edit"))
+}
+
+/// PathRegistry Inspection Helpers:
+/// `has_path`, `path_names`, and `path_template` allow introspecting registered names.
+pub fn registry_inspection_helpers_test() {
+  let router =
+    fist.new()
+    |> fist.get("/users/:id/profile", fn(_, _, _) { "profile" })
+    |> fist.name("profile")
+    |> fist.get("/health", fn(_, _, _) { "ok" })
+    |> fist.name("health")
+
+  let registry = fist.path_registry(router)
+
+  fist.has_path(registry, "profile") |> should.equal(True)
+  fist.has_path(registry, "health") |> should.equal(True)
+  fist.has_path(registry, "unknown") |> should.equal(False)
+
+  fist.path_template(registry, "profile")
+  |> should.equal(Ok("/users/:id/profile"))
+
+  fist.path_template(registry, "health")
+  |> should.equal(Ok("/health"))
+
+  fist.path_template(registry, "unknown")
+  |> should.equal(Error(Nil))
+}
+
+/// Router Merge with Compatible Same-Name Routes Succeeds:
+/// If two merged routers happen to register the same route name for identical paths,
+/// merge succeeds idempotently.
+pub fn compatible_path_name_on_merge_test() {
+  let a =
+    fist.new()
+    |> fist.get("/home", fn(_, _, _) { "a" })
+    |> fist.name("home")
+
+  let b =
+    fist.new()
+    |> fist.post("/home", fn(_, _, _) { "b" })
+    |> fist.name("home")
+
+  let merged = fist.merge(a, b)
+  fist.path(merged, for: "home", with: []) |> should.equal(Ok("/home"))
+}
