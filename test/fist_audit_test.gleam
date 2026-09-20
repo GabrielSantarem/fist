@@ -34,15 +34,20 @@ pub fn case_sensitivity_test() {
   fist.handle(router, req_lower, Nil, fn() { "404" }) |> should.equal("lower")
 }
 
-/// Dynamic Parameter Conflict Panic:
-/// Registering conflicting dynamic parameter names at the same level panics immediately (fail-fast).
+/// Distinct Dynamic Parameters with Fallthrough:
+/// Registering dynamic parameters with differing names at the same level is supported
+/// via ordered priority branches and backtracking fallthrough.
 pub fn parameter_name_conflict_test() {
-  support.rescue(fn() {
+  let router =
     fist.new()
     |> fist.get("/users/:id/profile", fn(_, _, _) { "profile" })
     |> fist.get("/users/:user_id/settings", fn(_, _, _) { "settings" })
-  })
-  |> should.be_error
+
+  let req1 = request.new() |> request.set_path("/users/42/profile")
+  let req2 = request.new() |> request.set_path("/users/42/settings")
+
+  fist.handle(router, req1, Nil, fn() { "404" }) |> should.equal("profile")
+  fist.handle(router, req2, Nil, fn() { "404" }) |> should.equal("settings")
 }
 
 /// Description Reset on Router Transformation:

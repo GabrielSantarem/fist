@@ -1,6 +1,7 @@
 import fist/internal/path
 import fist/internal/types.{
-  type Node, type Router, Node, Route, Router, empty_node, new_router,
+  type DynamicBranch, type Node, type Router, DynamicBranch, Node, Route, Router,
+  empty_node, new_router,
 }
 import gleam/dict.{type Dict}
 import gleam/http.{type Method}
@@ -10,9 +11,49 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
+fn update_or_append_dynamic(
+  branches: List(DynamicBranch(req_body, ctx, output)),
+  param_name: String,
+  rest: List(String),
+  handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> List(DynamicBranch(req_body, ctx, output)) {
+  case branches {
+    [] -> {
+      let child = insert_route(empty_node(), rest, handler)
+      [DynamicBranch(param_name: param_name, guard: None, child: child)]
+    }
+    [branch, ..rest_branches] -> {
+      case branch.param_name == param_name {
+        True -> {
+          let updated_child = insert_route(branch.child, rest, handler)
+          [DynamicBranch(..branch, child: updated_child), ..rest_branches]
+        }
+        False -> {
+          [
+            branch,
+            ..update_or_append_dynamic(rest_branches, param_name, rest, handler)
+          ]
+        }
+      }
+    }
+  }
+}
+
+fn sort_dynamic_branches(
+  branches: List(DynamicBranch(req, ctx, out)),
+) -> List(DynamicBranch(req, ctx, out)) {
+  let #(guarded, unguarded) =
+    list.partition(branches, fn(b) {
+      case b.guard {
+        Some(_) -> True
+        None -> False
+      }
+    })
+  list.append(guarded, unguarded)
+}
+
 /// Recursively inserts a route into the Trie.
-/// Panics if an identical route already exists, if dynamic/wildcard names conflict,
-/// or if a wildcard is placed non-terminally.
+/// Panics if an identical route already exists or if a wildcard is placed non-terminally.
 pub fn insert_route(
   node: Node(req_body, ctx, output),
   segments: List(String),
@@ -67,24 +108,15 @@ pub fn insert_route(
           panic as "Invalid route: dynamic parameter name cannot be empty (e.g. use ':id' instead of ':')"
         _ -> Nil
       }
-      let child = case node.dynamic_child {
-        Some(#(existing_name, child_node)) -> {
-          case existing_name == param_name {
-            True -> child_node
-            False ->
-              panic as string.concat([
-                  "Route collision: cannot register dynamic segment ':",
-                  param_name,
-                  "' because ':",
-                  existing_name,
-                  "' is already registered at this path level",
-                ])
-          }
-        }
-        None -> empty_node()
-      }
-      let updated_child = insert_route(child, rest, handler)
-      Node(..node, dynamic_child: Some(#(param_name, updated_child)))
+      let updated_children =
+        update_or_append_dynamic(
+          node.dynamic_children,
+          param_name,
+          rest,
+          handler,
+        )
+        |> sort_dynamic_branches
+      Node(..node, dynamic_children: updated_children)
     }
 
     [segment, ..rest] -> {
@@ -128,14 +160,18 @@ pub fn update_description(
       }
     }
 
-    [":" <> _, ..rest] -> {
-      case node.dynamic_child {
-        Some(#(p, child)) -> {
-          let updated = update_description(child, rest, desc)
-          Node(..node, dynamic_child: Some(#(p, updated)))
-        }
-        None -> node
-      }
+    [":" <> param_name, ..rest] -> {
+      let updated_children =
+        list.map(node.dynamic_children, fn(branch) {
+          case branch.param_name == param_name {
+            True -> {
+              let updated_child = update_description(branch.child, rest, desc)
+              DynamicBranch(..branch, child: updated_child)
+            }
+            False -> branch
+          }
+        })
+      Node(..node, dynamic_children: updated_children)
     }
 
     [segment, ..rest] -> {
@@ -153,9 +189,105 @@ pub fn update_description(
   }
 }
 
+/// Recursively updates a dynamic branch to attach a guard predicate.
+pub fn update_guard(
+  node: Node(req_body, ctx, output),
+  segments: List(String),
+  target_param: String,
+  predicate: fn(String) -> Bool,
+) -> Node(req_body, ctx, output) {
+  case segments {
+    [] -> node
+
+    [":" <> param_name, ..rest] -> {
+      case param_name == target_param {
+        True -> {
+          let updated_children =
+            list.map(node.dynamic_children, fn(branch) {
+              case branch.param_name == target_param {
+                True -> {
+                  let new_guard = case branch.guard {
+                    Some(prev) -> fn(s) { prev(s) && predicate(s) }
+                    None -> predicate
+                  }
+                  DynamicBranch(..branch, guard: Some(new_guard))
+                }
+                False -> branch
+              }
+            })
+            |> sort_dynamic_branches
+          Node(..node, dynamic_children: updated_children)
+        }
+        False -> {
+          let updated_children =
+            list.map(node.dynamic_children, fn(branch) {
+              case branch.param_name == param_name {
+                True -> {
+                  let updated_child =
+                    update_guard(branch.child, rest, target_param, predicate)
+                  DynamicBranch(..branch, child: updated_child)
+                }
+                False -> branch
+              }
+            })
+            |> sort_dynamic_branches
+          Node(..node, dynamic_children: updated_children)
+        }
+      }
+    }
+
+    [segment, ..rest] -> {
+      case dict.get(node.static_children, segment) {
+        Ok(child) -> {
+          let updated = update_guard(child, rest, target_param, predicate)
+          Node(
+            ..node,
+            static_children: dict.insert(node.static_children, segment, updated),
+          )
+        }
+        Error(_) -> node
+      }
+    }
+  }
+}
+
+fn find_dynamic_route(
+  branches: List(DynamicBranch(req_body, ctx, output)),
+  segment: String,
+  rest: List(String),
+  params: Dict(String, String),
+) -> Result(
+  #(
+    fn(Request(req_body), ctx, Dict(String, String)) -> output,
+    Dict(String, String),
+  ),
+  Nil,
+) {
+  case branches {
+    [] -> Error(Nil)
+    [branch, ..rest_branches] -> {
+      let passes_guard = case branch.guard {
+        Some(predicate) -> predicate(segment)
+        None -> True
+      }
+      case passes_guard {
+        False -> find_dynamic_route(rest_branches, segment, rest, params)
+        True -> {
+          let new_params = dict.insert(params, branch.param_name, segment)
+          case find_route(branch.child, rest, new_params) {
+            Ok(match) -> Ok(match)
+            Error(Nil) ->
+              find_dynamic_route(rest_branches, segment, rest, params)
+          }
+        }
+      }
+    }
+  }
+}
+
 /// Recursively traverses the Trie to find a matching handler.
-/// Follows strict precedence: Static > Dynamic (:param) > Wildcard (*catch_all),
-/// with full backtracking support.
+/// Follows strict precedence: Static > Dynamic with Guard > Dynamic Generic > Wildcard (*catch_all),
+/// with full fallthrough and backtracking support.
 pub fn find_route(
   node: Node(req_body, ctx, output),
   segments: List(String),
@@ -182,17 +314,11 @@ pub fn find_route(
         Error(Nil) -> Error(Nil)
       }
 
-      // 2. If static failed, try dynamic segment match (:param)
+      // 2. If static failed, try dynamic branches in priority order with fallthrough
       let dynamic_result = case static_result {
         Ok(match) -> Ok(match)
         Error(Nil) -> {
-          case node.dynamic_child {
-            Some(#(param_name, child)) -> {
-              let new_params = dict.insert(params, param_name, segment)
-              find_route(child, rest, new_params)
-            }
-            None -> Error(Nil)
-          }
+          find_dynamic_route(node.dynamic_children, segment, rest, params)
         }
       }
 
@@ -214,41 +340,70 @@ pub fn find_route(
   }
 }
 
+fn merge_single_branch(
+  branches: List(DynamicBranch(req, ctx, out)),
+  b_branch: DynamicBranch(req, ctx, out),
+) -> List(DynamicBranch(req, ctx, out)) {
+  case branches {
+    [] -> [b_branch]
+    [a_branch, ..rest_a] -> {
+      case a_branch.param_name == b_branch.param_name {
+        True -> {
+          let merged_child = merge_nodes(a_branch.child, b_branch.child)
+          let guard = case a_branch.guard, b_branch.guard {
+            Some(g), _ -> Some(g)
+            None, Some(g) -> Some(g)
+            None, None -> None
+          }
+          [
+            DynamicBranch(
+              param_name: a_branch.param_name,
+              guard: guard,
+              child: merged_child,
+            ),
+            ..rest_a
+          ]
+        }
+        False -> {
+          [a_branch, ..merge_single_branch(rest_a, b_branch)]
+        }
+      }
+    }
+  }
+}
+
+fn merge_dynamic_children(
+  a_branches: List(DynamicBranch(req, ctx, out)),
+  b_branches: List(DynamicBranch(req, ctx, out)),
+) -> List(DynamicBranch(req, ctx, out)) {
+  case b_branches {
+    [] -> a_branches
+    [b_branch, ..rest_b] -> {
+      let updated_a = merge_single_branch(a_branches, b_branch)
+      merge_dynamic_children(updated_a, rest_b)
+    }
+  }
+}
+
 /// Recursively merges two nodes.
-/// Panics if both nodes define a route, if dynamic parameter names conflict,
-/// or if wildcards conflict at the same level.
+/// Static and dynamic branches merge cleanly, with full priority preservation.
 pub fn merge_nodes(
   a: Node(req, ctx, out),
   b: Node(req, ctx, out),
 ) -> Node(req, ctx, out) {
   let route = case a.route, b.route {
     Some(_), Some(_) ->
-      panic as "Route collision: duplicate route found while merging routers"
-    Some(r_a), None -> Some(r_a)
-    None, Some(r_b) -> Some(r_b)
-    None, None -> None
+      panic as "Route collision: cannot merge routers because a route is registered at the same path in both"
+    None, some_b -> some_b
+    some_a, None -> some_a
   }
 
   let static_children =
     dict.combine(a.static_children, b.static_children, merge_nodes)
 
-  let dynamic_child = case a.dynamic_child, b.dynamic_child {
-    Some(#(name_a, child_a)), Some(#(name_b, child_b)) -> {
-      case name_a == name_b {
-        True -> Some(#(name_a, merge_nodes(child_a, child_b)))
-        False ->
-          panic as string.concat([
-              "Route collision: cannot merge dynamic segments ':",
-              name_a,
-              "' and ':",
-              name_b,
-              "' at the same path level",
-            ])
-      }
-    }
-    None, some_b -> some_b
-    some_a, None -> some_a
-  }
+  let dynamic_children =
+    merge_dynamic_children(a.dynamic_children, b.dynamic_children)
+    |> sort_dynamic_branches
 
   let wildcard_child = case a.wildcard_child, b.wildcard_child {
     Some(#(name_a, _)), Some(#(name_b, _)) -> {
@@ -264,7 +419,7 @@ pub fn merge_nodes(
     some_a, None -> some_a
   }
 
-  Node(route, static_children, dynamic_child, wildcard_child)
+  Node(route, static_children, dynamic_children, wildcard_child)
 }
 
 /// Creates a new tree from a list of segments that leads to the given sub-tree.
@@ -289,7 +444,9 @@ pub fn prefix_node(
       }
       let child = prefix_node(rest, sub_tree)
       let empty = empty_node()
-      Node(..empty, dynamic_child: Some(#(param_name, child)))
+      let branch =
+        DynamicBranch(param_name: param_name, guard: None, child: child)
+      Node(..empty, dynamic_children: [branch])
     }
     [segment, ..rest] -> {
       let child = prefix_node(rest, sub_tree)
@@ -317,9 +474,8 @@ pub fn map_node_context(
     })
 
   let new_dynamic =
-    option.map(node.dynamic_child, fn(pair) {
-      let #(name, child) = pair
-      #(name, map_node_context(child, mapper))
+    list.map(node.dynamic_children, fn(branch) {
+      DynamicBranch(..branch, child: map_node_context(branch.child, mapper))
     })
 
   let new_wildcard =
@@ -350,9 +506,8 @@ pub fn map_node(
     dict.map_values(node.static_children, fn(_, child) { map_node(child, fun) })
 
   let new_dynamic =
-    option.map(node.dynamic_child, fn(pair) {
-      let #(name, child) = pair
-      #(name, map_node(child, fun))
+    list.map(node.dynamic_children, fn(branch) {
+      DynamicBranch(..branch, child: map_node(branch.child, fun))
     })
 
   let new_wildcard =
@@ -383,9 +538,8 @@ pub fn wrap_node(
     })
 
   let new_dynamic =
-    option.map(node.dynamic_child, fn(pair) {
-      let #(name, child) = pair
-      #(name, wrap_node(child, middleware))
+    list.map(node.dynamic_children, fn(branch) {
+      DynamicBranch(..branch, child: wrap_node(branch.child, middleware))
     })
 
   let new_wildcard =
@@ -402,13 +556,12 @@ pub fn wrap_node(
 pub fn route(
   router: Router(req_body, ctx, output),
   method: Method,
-  path: String,
+  path_str: String,
   handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
 ) -> Router(req_body, ctx, output) {
-  let segments = path.parse_path(path)
-  let root = dict.get(router.routes, method) |> result.unwrap(empty_node())
-  let updated_root = insert_route(root, segments, handler)
-
+  let segments = path.parse_path(path_str)
+  let root_node = dict.get(router.routes, method) |> result.unwrap(empty_node())
+  let updated_root = insert_route(root_node, segments, handler)
   Router(
     routes: dict.insert(router.routes, method, updated_root),
     last_added: Some(#(method, segments)),
@@ -417,15 +570,57 @@ pub fn route(
 
 pub fn describe(
   router: Router(req_body, ctx, output),
-  description: String,
+  desc: String,
 ) -> Router(req_body, ctx, output) {
   case router.last_added {
     Some(#(method, segments)) -> {
-      let root = dict.get(router.routes, method) |> result.unwrap(empty_node())
-      let updated_root = update_description(root, segments, description)
-      Router(..router, routes: dict.insert(router.routes, method, updated_root))
+      case dict.get(router.routes, method) {
+        Ok(root) -> {
+          let updated_root = update_description(root, segments, desc)
+          Router(
+            routes: dict.insert(router.routes, method, updated_root),
+            last_added: router.last_added,
+          )
+        }
+        Error(_) -> router
+      }
     }
     None -> router
+  }
+}
+
+pub fn guard(
+  router: Router(req_body, ctx, output),
+  param_name: String,
+  predicate: fn(String) -> Bool,
+) -> Router(req_body, ctx, output) {
+  case router.last_added {
+    Some(#(method, segments)) -> {
+      let has_param = list.contains(segments, ":" <> param_name)
+      case has_param {
+        False ->
+          panic as string.concat([
+              "Invalid guard: parameter ':",
+              param_name,
+              "' not found in the last added route path",
+            ])
+        True -> {
+          case dict.get(router.routes, method) {
+            Ok(root) -> {
+              let updated_root =
+                update_guard(root, segments, param_name, predicate)
+              Router(
+                routes: dict.insert(router.routes, method, updated_root),
+                last_added: router.last_added,
+              )
+            }
+            Error(_) -> router
+          }
+        }
+      }
+    }
+    None ->
+      panic as "Invalid guard: fist.guard must be called immediately after registering a route"
   }
 }
 

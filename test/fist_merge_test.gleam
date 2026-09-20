@@ -117,8 +117,9 @@ pub fn merge_duplicate_endpoint_collision_panics_test() {
   |> should.be_error
 }
 
-/// Conflicting Dynamic Parameter Names Merge Panic:
-/// Merging routers with differing parameter names at the same level causes a fail-fast panic.
+/// Merging Distinct Dynamic Parameter Branches:
+/// Merging routers with differing dynamic parameter names at the same level merges cleanly
+/// as ordered dynamic branches, resolving through fallthrough.
 pub fn merge_conflicting_dynamic_parameters_panics_test() {
   let router_a =
     fist.new()
@@ -128,8 +129,13 @@ pub fn merge_conflicting_dynamic_parameters_panics_test() {
     fist.new()
     |> fist.get("/users/:user_id/settings", fn(_, _, _) { "b" })
 
-  support.rescue(fn() { fist.merge(router_a, router_b) })
-  |> should.be_error
+  let merged = fist.merge(router_a, router_b)
+
+  let req_a = request.new() |> request.set_path("/users/42/profile")
+  let req_b = request.new() |> request.set_path("/users/42/settings")
+
+  fist.handle(merged, req_a, Nil, fn() { "404" }) |> should.equal("a")
+  fist.handle(merged, req_b, Nil, fn() { "404" }) |> should.equal("b")
 }
 
 /// Monoidal Empty Router Identity:
