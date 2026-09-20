@@ -15,6 +15,8 @@ Fist automatically handles common URL inconsistencies so you don't have to write
 *   **Trailing Slashes:** `/users` and `/users/` are treated as the **same route**.
 *   **Double Slashes:** `//api///v1` is normalized to `/api/v1`.
 *   **Case Sensitivity:** Fist is **Case Sensitive**. `/Users` is distinct from `/users`.
+*   **Percent-Encoding:** Parameter values and segments are automatically decoded (e.g., `/user/Jo%C3%A3o` extracts `"João"`, `/search/c%2B%2B` extracts `"c++"`).
+*   **Query Strings & Fragments:** Stripped cleanly from the path matching (`/users?limit=10#top` matches `/users`).
 
 ## Precedence & Priority
 
@@ -24,6 +26,8 @@ When a request matches multiple possibilities (e.g., a static route and a wildca
     *   Example: `/posts/new` takes priority over `/posts/:id`.
 2.  **Dynamic Match**
     *   Example: `/posts/:id` matches if no static route matches.
+3.  **Backtracking**
+    *   If a static segment matches partially but fails deeper down, Fist backtracks to check for dynamic matches at that level.
 
 ## Constraints
 

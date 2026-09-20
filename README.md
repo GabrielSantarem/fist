@@ -1,142 +1,83 @@
 # Fist 👊
-A declarative, functional router for Gleam.
+
+A declarative, type-safe, tree-based HTTP router for Gleam.
+
+`fist` is a pure router library that operates directly on standard `gleam/http` types, completely decoupled from any specific web server (Mist, Wisp, Elli, etc.).
+
+---
 
 ## Features
-- **Declarative API**: Build your router with a clean, chainable syntax: `fist.get("/", to: handler)`.
-- **Flexible Middleware**: Apply logic at the route, group, or global level using functional wrapping with `fist.wrap`.
-- **Context Polymorphism**: Use `mount` and `map_context` to combine routers with different context types seamlessly.
-- **Route Groups**: Cleanly organize routes with prefixes and shared middlewares using `fist.group`.
-- **Dynamic Routing**: Capture URL parameters with `:parameter_name`.
-- **Generic Context**: Pass any context (database connections, config, etc.) to your handlers without rebuilding the router.
-- **Generic Output**: Handlers can return anything (`Response`, `String`, or your own custom types).
-- **Transformation Pipeline**: Use `fist.map` to transform your router's output globally.
-- **Tree-based Routing (Trie)**: High-performance routing that scales with your application.
-- **Pure Gleam**: No mandatory dependencies on specific web servers. Works with anything that uses the standard `gleam/http` types.
+
+- **Declarative & Chainable API**: `fist.get("/", to: handler)`
+- **Full HTTP Method Support**: `get`, `post`, `put`, `delete`, `patch`, `head`, `options`, and custom methods via `route`
+- **Trie-Based Routing (Radix Tree)**: $O(n)$ path lookups with automatic backtracking from static to dynamic routes
+- **Dynamic Parameters**: Extract URL variables (`:id`) with automatic percent-decoding (`/user/Jo%C3%A3o` -> `"João"`)
+- **Route Groups & Prefixes**: Cleanly group endpoints with `fist.group`
+- **Composable Middlewares**: Zero-overhead static wrapping via `fist.wrap` executed in natural declaration order
+- **Context Polymorphism**: Combine modular sub-routers with different context types using `mount` and `map_context`
+- **Output Transformation**: Return custom Algebraic Data Types (ADTs) and transform them globally with `fist.map`
+- **Route Introspection & Metadata**: Attach descriptions with `describe` and inspect the route tree with `inspect`
+- **HTTP 405 & CORS Preflight**: Inspect supported methods for any path using `fist.allowed_methods`
+
+---
 
 ## Installation
-Add `fist` to your `gleam.toml`:
+
 ```sh
-gleam add fist@1
+gleam add fist
 ```
 
-## Quick Start
+---
 
-### 1. Define your handlers
-Handlers receive the request, a custom context, and the captured parameters.
+## Quick Example
 
 ```gleam
-import gleam/dict.{type Dict}
+import fist
+import gleam/dict
 import gleam/http/request.{type Request}
-import gleam/http/response
+import gleam/http/response.{type Response}
 import gleam/result
-import fist
 
-fn hello_handler(_req: Request(body), _ctx: MyContext, params: Dict(String, String)) {
-  let name = dict.get(params, "name") |> result.unwrap("stranger")
-  
+// 1. Define custom application context
+pub type AppContext {
+  AppContext(api_version: String)
+}
+
+// 2. Define your handlers: fn(Request, Context, Params) -> Response
+fn get_user(_req: Request(String), ctx: AppContext, params: dict.Dict(String, String)) {
+  let user_id = dict.get(params, "user_id") |> result.unwrap("anonymous")
+
   response.new(200)
-  |> response.set_body("Hello, " <> name <> "!")
-}
-```
-
-### 2. Create and transform the router
-You can write your business logic using simple types and then transform them at the end.
-
-```gleam
-import fist
-import gleam/http/response
-
-pub fn main() {
-  let router = 
-    fist.new()
-    |> fist.get("/hello/:name", to: hello_handler)
-    |> fist.get("/json", to: fn(_, _, _) { 
-      response.new(200)
-      |> response.set_header("content-type", "application/json")
-      |> response.set_body("{\"status\": \"ok\"}") 
-    })
-
-  // Example of using the router with a context
-  let req = ...
-  let ctx = MyContext(...)
-  
-  fist.handle(router, req, ctx, fn() {
-    response.new(404)
-    |> response.set_body("Not Found")
-  })
-}
-```
-
-## Advanced: Custom Return Types (ADTs)
-Because `fist` is generic over the handler's output, you can use your own Algebraic Data Types and map them.
-
-```gleam
-import gleam/http/response
-
-pub type MyAnswer {
-  Success(String)
-  UserFound(User)
-  Error(String)
+  |> response.set_header("x-api-version", ctx.api_version)
+  |> response.set_body("User profile: " <> user_id)
 }
 
-fn my_handler(_, _, _) {
-  Success("Operation completed")
-}
-
-pub fn create_router() {
+// 3. Build the router
+pub fn router() {
   fist.new()
-  |> fist.get("/", to: my_handler)
-  |> fist.map(fn(answer) {
-    case answer {
-      Success(msg) -> {
-        response.new(200) 
-        |> response.set_body(msg)
-      }
-      UserFound(user) -> {
-        response.new(200)
-        |> response.set_header("content-type", "application/json")
-        |> response.set_body(user_to_json(user))
-      }
-      Error(err) -> {
-        response.new(500) 
-        |> response.set_body("Error: " <> err)
-      }
-    }
+  |> fist.get("/", to: fn(_, _, _) {
+    response.new(200) |> response.set_body("Welcome!")
+  })
+  |> fist.group(at: "/api/v1", with: [], defining: fn(v1) {
+    v1
+    |> fist.get("/users/:user_id", to: get_user)
+    |> fist.describe("Get user by ID")
+  })
+}
+
+// 4. Dispatch requests
+pub fn handle_request(req: Request(String), ctx: AppContext) -> Response(String) {
+  fist.handle(router(), req, ctx, not_found: fn() {
+    response.new(404) |> response.set_body("Route Not Found")
   })
 }
 ```
 
-## Integration with Web Servers
-`fist` is a pure router. To use it with a server like **Mist** or **Wisp**, simply call `fist.handle` inside your server's request handler.
+---
 
-### Example with Mist
-```gleam
-import mist
-import fist
-import gleam/bytes_tree
-import gleam/http/response
+## Documentation
 
-pub fn main() {
-  let router = 
-    fist.new()
-    |> fist.get("/", to: fn(_, _, _) { 
-      response.new(200)
-      |> response.set_body("Hello!") 
-    })
-
-  let service = fn(req) {
-    let res = fist.handle(router, req, Nil, fn() { 
-      response.new(404)
-      |> response.set_body("Not Found") 
-    })
-    
-    // Convert your Response(String) to Mist's expected format
-    let body = mist.Bytes(bytes_tree.from_string(res.body))
-    response.set_body(res, body)
-  }
-
-  mist.new(service)
-  |> mist.port(8080)
-  |> mist.start_http()
-}
-```
+For full documentation and core architecture details:
+- **[User Guide](docs/guide.md)**: Route definitions, groups, middlewares, and inspection.
+- **[Core Concepts & Behavior](docs/behavior.md)**: Trie structure, normalization, backtracking, and constraints.
+- **[Advanced Patterns](docs/advanced.md)**: Context polymorphism, ADT output mapping, and modular architecture.

@@ -1,125 +1,145 @@
-# Fist User Guide 👊
+# User Guide
 
-This guide provides practical examples for using the Fist router in your Gleam applications.
-
-## Table of Contents
-
-1.  **[Core Concepts & Behavior](behavior.html)** - How the router works, path normalization, and precedence.
-2.  **[Basic Routing](#basic-routing)** - Defining simple static and dynamic routes.
-3.  **[Advanced Patterns](advanced.html)** - Middleware, Context, and Custom Return Types.
-4.  **[Integration & Deployment](integration.html)** - Using with Mist and Serving Static Files.
+`fist` is a declarative, type-safe, tree-based HTTP router for Gleam. It is independent of any specific web server and operates directly on standard `gleam/http` types.
 
 ---
 
-## Basic Routing
-
-Static routes are exact string matches. They always take priority over dynamic routes.
+## 1. Creating a Router
 
 ```gleam
 import fist
 import gleam/http/response
 
-fn home_handler(_, _, _) {
-  response.new(200) |> response.set_body("Welcome Home!")
-}
-
-pub fn main() {
-  let router =
-    fist.new()
-    |> fist.get("/", to: home_handler)
-    |> fist.get("/about", to: fn(_, _, _) {
-      response.new(200) |> response.set_body("About Us")
-    })
+pub fn create_router() {
+  fist.new()
+  |> fist.get("/", to: fn(_req, _ctx, _params) {
+    response.new(200) |> response.set_body("Hello, World!")
+  })
 }
 ```
 
-## Dynamic Parameters
+---
 
-Dynamic routes use segments starting with `:` to capture values. These values are passed to your handler in the `params` dictionary.
+## 2. Route Handlers & Methods
+
+Every handler receives three arguments:
+1. `req`: The HTTP `Request(req_body)`.
+2. `ctx`: A custom application context (e.g. database, config, state).
+3. `params`: A `Dict(String, String)` containing extracted URL parameters.
+
+### Supported Methods
+`fist` provides first-class helpers for standard HTTP methods:
+- `fist.get(router, path, to: handler)`
+- `fist.post(router, path, to: handler)`
+- `fist.put(router, path, to: handler)`
+- `fist.delete(router, path, to: handler)`
+- `fist.patch(router, path, to: handler)`
+- `fist.head(router, path, to: handler)`
+- `fist.options(router, path, to: handler)`
+- `fist.route(router, method: http.Other("..."), path, handler)` (Custom methods)
+
+---
+
+## 3. Dynamic Parameters
+
+Prefix a segment with `:` to capture its value. Percent-encoded values are automatically decoded (e.g., `João` from `Jo%C3%A3o`).
 
 ```gleam
 import fist
 import gleam/dict
-import gleam/result
 import gleam/http/response
+import gleam/result
 
-fn user_handler(_req, _ctx, params) {
-  // Extract the "id" parameter
+fn show_user(_req, _ctx, params) {
   let id = dict.get(params, "id") |> result.unwrap("unknown")
-
-  response.new(200)
-  |> response.set_body("Viewing user: " <> id)
+  response.new(200) |> response.set_body("User: " <> id)
 }
-
-pub fn main() {
-  let router =
-    fist.new()
-    |> fist.get("/users/:id", to: user_handler)
-}
-```
-
-## Route Groups and Middlewares
-
-Fist allows you to group routes under a common prefix and apply middlewares to them. A middleware is a function that wraps a handler:
-
-```gleam
-fn auth_middleware(next) {
-  fn(req, ctx, params) {
-    case is_authenticated(req) {
-      True -> next(req, ctx, params)
-      False -> response.new(401)
-    }
-  }
-}
-
-pub fn main() {
-  fist.new()
-  |> fist.group(at: "/api/v1", with: [auth_middleware], defining: fn(v1) {
-    v1
-    |> fist.get("/users", list_users)
-    |> fist.post("/users", create_user)
-  })
-}
-```
-
-Middlewares are applied at definition time (Static Wrapping), ensuring zero performance overhead during route lookup.
-
-## Route Metadata & Documentation
-
-Fist allows you to attach descriptions to routes. This is useful for generating documentation automatically.
-
-```gleam
-import fist
 
 let router =
   fist.new()
-  |> fist.get("/users", to: list_users)
-  |> fist.describe("Returns a list of all users")
-
-  |> fist.post("/users", to: create_user)
-  |> fist.describe("Creates a new user")
-```
-
-### Introspection
-You can inspect the registered routes programmatically:
-
-```gleam
-import gleam/io
-
-pub fn print_routes(router) {
-  fist.inspect(router)
-  |> list.each(fn(route) {
-    io.println(route.method <> " " <> route.path <> " - " <> route.description)
-  })
-}
-// Output:
-// GET /users - Returns a list of all users
-// POST /users - Creates a new user
+  |> fist.get("/users/:id", to: show_user)
+  |> fist.get("/users/:id/posts/:post_id", to: show_post)
 ```
 
 ---
 
-*Continue reading:*
-*   [Core Concepts & Behavior →](behavior.html)
-*   [Advanced Patterns →](advanced.html)
-*   [Integration & Static Files →](integration.html)
+## 4. Route Groups & Middlewares
+
+### Groups
+Organize related routes under a common path prefix and apply shared middlewares:
+
+```gleam
+let router =
+  fist.new()
+  |> fist.group(at: "/api/v1", with: [auth_middleware], defining: fn(v1) {
+    v1
+    |> fist.get("/users", to: list_users)
+    |> fist.post("/users", to: create_user)
+  })
+```
+
+### Middlewares (`wrap`)
+Middlewares are wrapper functions `(Handler) -> Handler`. They are applied at definition time (*Static Wrapping*), introducing zero Trie lookup overhead at runtime.
+
+Middlewares execute in the exact order declared in the list (outer to inner):
+
+```gleam
+fn log_middleware(next) {
+  fn(req, ctx, params) {
+    // Before handler logic
+    let res = next(req, ctx, params)
+    // After handler logic
+    res
+  }
+}
+
+let router =
+  fist.new()
+  |> fist.get("/public", to: public_handler)
+  |> fist.wrap(log_middleware)
+```
+
+---
+
+## 5. Metadata & Documentation (`describe`, `inspect`)
+
+You can document endpoints immediately after registering them:
+
+```gleam
+let router =
+  fist.new()
+  |> fist.get("/users", to: list_users)
+  |> fist.describe("List all active users")
+  |> fist.post("/users", to: create_user)
+  |> fist.describe("Create a new user")
+
+// Extract all routes and metadata programmatically:
+let routes = fist.inspect(router)
+```
+
+---
+
+## 6. Execution (`handle`, `allowed_methods`)
+
+Dispatch requests using `fist.handle`:
+
+```gleam
+let response =
+  fist.handle(
+    router,
+    request: req,
+    context: ctx,
+    not_found: fn() {
+      response.new(404) |> response.set_body("Not Found")
+    },
+  )
+```
+
+To support CORS preflight (`OPTIONS`) or **405 Method Not Allowed**:
+
+```gleam
+case fist.allowed_methods(router, req.path) {
+  [] -> not_found_handler()
+  methods -> method_not_allowed_handler(methods)
+}
+```
