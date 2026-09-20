@@ -2,7 +2,9 @@ import fist
 import gleam/dict
 import gleam/http.{Delete, Get, Head, Options, Post, Put}
 import gleam/http/request
+import gleam/http/response
 import gleam/list
+import gleam/string
 import gleeunit
 import gleeunit/should
 
@@ -335,4 +337,97 @@ pub fn custom_http_method_test() {
 
   fist.handle(router, req, Nil, fn() { "404" })
   |> should.equal("purged")
+}
+
+// 13. Teste end-to-end do padrão CORS Preflight (OPTIONS) e 405 Method Not Allowed
+pub fn cors_preflight_and_405_dispatch_test() {
+  let router =
+    fist.new()
+    |> fist.get("/api/users", fn(_, _, _) {
+      response.new(200) |> response.set_body("users list")
+    })
+    |> fist.post("/api/users", fn(_, _, _) {
+      response.new(201) |> response.set_body("created")
+    })
+
+  let dispatch = fn(req: request.Request(String)) {
+    case req.method {
+      Options -> {
+        case fist.allowed_methods(router, req.path) {
+          [] -> response.new(404) |> response.set_body("Not Found")
+          methods -> {
+            let allow =
+              list.map(methods, string.inspect)
+              |> string.join(", ")
+
+            response.new(204)
+            |> response.set_header("access-control-allow-methods", allow)
+            |> response.set_header("access-control-allow-origin", "*")
+            |> response.set_body("")
+          }
+        }
+      }
+
+      _ -> {
+        fist.handle(router, req, Nil, fn() {
+          case fist.allowed_methods(router, req.path) {
+            [_, ..] as methods -> {
+              let allow =
+                list.map(methods, string.inspect)
+                |> string.join(", ")
+
+              response.new(405)
+              |> response.set_header("allow", allow)
+              |> response.set_body("Method Not Allowed")
+            }
+            [] -> response.new(404) |> response.set_body("Not Found")
+          }
+        })
+      }
+    }
+  }
+
+  // A. OPTIONS preflight em rota existente deve retornar 204 com access-control-allow-methods
+  let req_options =
+    request.new()
+    |> request.set_method(Options)
+    |> request.set_path("/api/users")
+  let res_options = dispatch(req_options)
+  res_options.status |> should.equal(204)
+  let assert Ok(cors_hdr) =
+    response.get_header(res_options, "access-control-allow-methods")
+  string.contains(cors_hdr, "Get") |> should.be_true
+  string.contains(cors_hdr, "Post") |> should.be_true
+
+  // B. Método não cadastrado na rota existente (PUT) deve retornar 405 com header allow
+  let req_put =
+    request.new() |> request.set_method(Put) |> request.set_path("/api/users")
+  let res_put = dispatch(req_put)
+  res_put.status |> should.equal(405)
+  res_put.body |> should.equal("Method Not Allowed")
+  let assert Ok(allow_hdr) = response.get_header(res_put, "allow")
+  string.contains(allow_hdr, "Get") |> should.be_true
+  string.contains(allow_hdr, "Post") |> should.be_true
+
+  // C. Método GET normal em rota existente funciona normalmente (200)
+  let req_get =
+    request.new() |> request.set_method(Get) |> request.set_path("/api/users")
+  let res_get = dispatch(req_get)
+  res_get.status |> should.equal(200)
+  res_get.body |> should.equal("users list")
+
+  // D. Rota que não existe para nenhum método retorna 404
+  let req_404 =
+    request.new() |> request.set_method(Get) |> request.set_path("/api/unknown")
+  let res_404 = dispatch(req_404)
+  res_404.status |> should.equal(404)
+  res_404.body |> should.equal("Not Found")
+
+  // E. OPTIONS em rota inexistente retorna 404
+  let req_options_404 =
+    request.new()
+    |> request.set_method(Options)
+    |> request.set_path("/api/unknown")
+  let res_options_404 = dispatch(req_options_404)
+  res_options_404.status |> should.equal(404)
 }
