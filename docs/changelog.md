@@ -22,7 +22,8 @@
 - **Feat**: Added defensive stripping of query parameters (`?`) and URL fragments (`#`) during path parsing.
 - **Feat**: Added `fist.head` and `fist.options` HTTP method helper functions.
 - **Feat**: Added `fist.allowed_methods` to inspect all registered HTTP methods for a given route (enabling CORS preflight and 405 Method Not Allowed).
-- **Test**: Expanded test coverage to 51 tests, including deep Trie backtracking, precedence rules, and edge cases.\n- **Docs**: Rewrote documentation and user guide for conciseness and clarity. Removed deprecated examples.
+- **Test**: Expanded test coverage to 51 tests, including deep Trie backtracking, precedence rules, and edge cases.
+- **Docs**: Rewrote documentation and user guide for conciseness and clarity. Removed deprecated examples.
 
 ## v1.5.0
 - **Feat**: Added `fist.wrap` for applying middlewares to all routes in a router.
@@ -36,3 +37,8 @@
 ## v1.3.0
 - **Chore**: Pure Router focus. Removed internal helper functions to keep the core minimal.
 - **Docs**: Consolidated Roadmap and Todo.
+
+## v1.1.0
+- **Feat**: Tree-based routing (Trie).
+- **Feat**: Generic handler outputs and Generic context.
+- **Chore**: Removed mandatory dependency on the Mist web server.
