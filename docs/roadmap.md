@@ -7,11 +7,13 @@ Project vision, milestone tracking, and architectural research for `fist`.
 ## Completed
 
 ### v1.7.0
+- **Typed Parameter Extractors (`fist/extract`)**: Pure, ergonomic parameter extraction and validation helpers (`extract.int`, `extract.float`, `extract.bool`, `extract.string`, `extract.non_empty_string`, `extract.uuid`, `extract.custom`) with first-class `use` expression support (`require_*`) and query string helpers (`query_params`, `query_string`, `query_int`, `query_bool`).
 - **Defensive Path Security (RFC 3986)**: Formal Section 5.2.4 `remove_dot_segments` implementation preventing path traversal attacks (`.` and `..`), null-byte sanitization (`\0`), and Windows backslash normalization.
 - **Wildcard Catch-All (`*param` / `/*`)**: Multi-segment path matching capturing all trailing segments.
 - **Strict 3-Tier Precedence**: `Static > Dynamic (:param) > Wildcard (*param)` with automatic deep backtracking to ancestor wildcards on dead-end static branches.
 - **Monoidal Router Merging (`fist.merge`)**: Combining disjoint and compatible routers recursively.
 - **Fail-Fast Collision Protection**: Immediate runtime panic on duplicate endpoints, conflicting dynamic parameter names, or conflicting wildcards.
+- **TypeScript Declarations Generation**: Auto-generated `.d.mts` definitions with generic parameters for JavaScript and TypeScript users.
 - **Full Cross-Target Compatibility**: 100% test coverage and build parity on both BEAM (Erlang) and JavaScript (Node.js/Bun/Deno/browser) runtimes.
 
 ### v1.6.0
@@ -41,11 +43,8 @@ Project vision, milestone tracking, and architectural research for `fist`.
 
 ## Future Explorations
 
-### 1. Typed Primitive Extractors (`fist/extract`)
-Ergonomic parameter extraction helpers for handlers (`extract.int`, `extract.string`, `extract.bool`) reducing manual parsing boilerplate while keeping the core router minimal.
-
-### 2. v2.0 Route Documentation & Code Generation
+### 1. v2.0 Route Documentation & Code Generation
 Explore code generation, expanded schema metadata, and automated OpenAPI 3.1 / TypeScript client generation based on `fist.inspect`.
 
-### 3. Multi-Tenant / Host-Based Routing
+### 2. Multi-Tenant / Host-Based Routing
 Explore virtual-host and subdomain multiplexing (`req.host`) for multi-tenant applications.

@@ -84,9 +84,7 @@ let router =
 
 ---
 
-## 5. Router Merging (`fist.merge`)
-
-You can combine two independent routers with identical context and output types using `fist.merge`:
+## 5. Router Merging (`fist.merge`)\n\nYou can combine two independent routers with identical context and output types using `fist.merge`:
 
 ```gleam
 let user_router =
@@ -226,4 +224,53 @@ pub fn dispatch(router, req, ctx) {
     }
   }
 }
+```
+
+---
+
+## 9. Typed Parameter Extractors (`fist/extract`)
+
+The `fist/extract` module provides pure, ergonomic helpers to extract and parse path and query parameters into concrete Gleam types, avoiding boilerplate string parsing inside your route handlers.
+
+### Built-in Parsers
+- `extract.int(params, "id")`: Parses integer (`Int`).
+- `extract.float(params, "price")`: Parses floating-point number (`Float`).
+- `extract.bool(params, "active")`: Parses boolean (`"true"`, `"1"`, `"yes"` vs `"false"`, `"0"`, `"no"`).
+- `extract.string(params, "slug")`: Validates key presence.
+- `extract.non_empty_string(params, "name")`: Rejects empty strings and whitespace.
+- `extract.uuid(params, "id")`: Validates and normalizes RFC 4122 UUIDs (`8-4-4-4-12` hex).
+- `extract.custom(params, "role", "UserRole", parse_fn)`: Custom domain parsers.
+
+### Ergonomic `use` Syntax
+
+Use the `require_*` family of functions with Gleam's `use` expression to easily validate parameters and short-circuit on error:
+
+```gleam
+import fist
+import fist/extract
+import gleam/http/response.{type Response}
+import gleam/int
+
+fn get_product(_req, _ctx, params) -> Response(String) {
+  use product_id <- extract.require_int(params, "id", or: fn(err) {
+    response.new(400) |> response.set_body(extract.error_to_string(err))
+  })
+  use is_active <- extract.require_bool(params, "active", or: fn(err) {
+    response.new(400) |> response.set_body(extract.error_to_string(err))
+  })
+
+  // product_id is an Int, is_active is a Bool
+  response.new(200)
+  |> response.set_body("Product " <> int.to_string(product_id))
+}
+```
+
+### Query String Parameters
+
+You can also extract query parameters directly from any `Request`:
+
+```gleam
+let query = extract.query_params(req)
+let page = extract.int_or(query, "page", default: 1)
+let search = extract.string_or(query, "q", default: "")
 ```
