@@ -62,6 +62,11 @@ pub fn insert_route(
     }
 
     [":" <> param_name, ..rest] -> {
+      case param_name {
+        "" ->
+          panic as "Invalid route: dynamic parameter name cannot be empty (e.g. use ':id' instead of ':')"
+        _ -> Nil
+      }
       let child = case node.dynamic_child {
         Some(#(existing_name, child_node)) -> {
           case existing_name == param_name {
@@ -263,7 +268,7 @@ pub fn merge_nodes(
 }
 
 /// Creates a new tree from a list of segments that leads to the given sub-tree.
-/// Panics if a wildcard is placed in the prefix path.
+/// Panics if a wildcard is placed in the prefix path or if dynamic parameter name is empty.
 pub fn prefix_node(
   segments: List(String),
   sub_tree: Node(req, ctx, out),
@@ -277,6 +282,11 @@ pub fn prefix_node(
           "' cannot be used in a route prefix",
         ])
     [":" <> param_name, ..rest] -> {
+      case param_name {
+        "" ->
+          panic as "Invalid route: dynamic parameter name cannot be empty in prefix (e.g. use ':id' instead of ':')"
+        _ -> Nil
+      }
       let child = prefix_node(rest, sub_tree)
       let empty = empty_node()
       Node(..empty, dynamic_child: Some(#(param_name, child)))
