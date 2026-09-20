@@ -303,20 +303,23 @@ pub fn mount(
   let sub_router = map_context(sub_router, mapper)
   let prefix_segments = path.parse_path(prefix)
 
-  dict.to_list(sub_router.routes)
-  |> list.fold(parent, fn(acc_router, method_pair) {
-    let #(method, sub_tree) = method_pair
-    let parent_root =
-      dict.get(acc_router.routes, method) |> result.unwrap(empty_node())
+  let mounted_router =
+    dict.to_list(sub_router.routes)
+    |> list.fold(parent, fn(acc_router, method_pair) {
+      let #(method, sub_tree) = method_pair
+      let parent_root =
+        dict.get(acc_router.routes, method) |> result.unwrap(empty_node())
 
-    let prefixed_sub_tree = prefix_node(prefix_segments, sub_tree)
-    let merged_root = merge_nodes(parent_root, prefixed_sub_tree)
+      let prefixed_sub_tree = prefix_node(prefix_segments, sub_tree)
+      let merged_root = merge_nodes(parent_root, prefixed_sub_tree)
 
-    Router(
-      ..acc_router,
-      routes: dict.insert(acc_router.routes, method, merged_root),
-    )
-  })
+      Router(
+        ..acc_router,
+        routes: dict.insert(acc_router.routes, method, merged_root),
+      )
+    })
+
+  Router(routes: mounted_router.routes, last_added: None)
 }
 
 pub fn wrap(
@@ -326,7 +329,7 @@ pub fn wrap(
 ) -> Router(req, ctx, out) {
   let new_routes =
     dict.map_values(router.routes, fn(_, node) { wrap_node(node, middleware) })
-  Router(..router, routes: new_routes)
+  Router(routes: new_routes, last_added: None)
 }
 
 pub fn group(
