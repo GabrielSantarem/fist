@@ -63,7 +63,44 @@ let router =
 
 ---
 
-## 4. Wildcard Catch-All (`*param`)
+## 4. Route Guards & Dynamic Fallthrough (`fist.guard`)
+
+Route guards attach functional validation predicates (`fn(String) -> Bool`) directly to dynamic path parameters in the Radix Trie.
+
+### Guarding Parameters
+When an incoming request matches a dynamic segment, the guard predicate evaluates. If it returns `True`, routing continues down that branch. If `False`, the router seamlessly falls through to subsequent candidate branches.
+
+```gleam
+import fist
+import fist/extract
+
+let router =
+  fist.new()
+  // Matches numeric IDs only (e.g. /users/42)
+  |> fist.get("/users/:id", to: show_user_by_id)
+  |> fist.guard("id", when: extract.is_int)
+  // Matches all other string usernames (e.g. /users/john_doe)
+  |> fist.get("/users/:username", to: show_user_by_username)
+```
+
+### Precedence & Fallthrough
+In the example above:
+1. A request to `/users/42` evaluates `extract.is_int("42")` $\to$ `True`. Dispatched to `show_user_by_id`.
+2. A request to `/users/john_doe` evaluates `extract.is_int("john_doe")` $\to$ `False`. Fist automatically falls through to the sibling `:username` branch and dispatches to `show_user_by_username`.
+
+### Combining Multiple Guards
+Multiple `fist.guard` calls on the same parameter chain with short-circuiting logical `AND`:
+
+```gleam
+router
+|> fist.get("/tokens/:token", to: handle_token)
+|> fist.guard("token", when: extract.is_alphanumeric)
+|> fist.guard("token", when: fn(s) { string.length(s) == 32 })
+```
+
+---
+
+## 5. Wildcard Catch-All (`*param`)
 
 Prefix the terminal segment with `*` to capture all remaining path segments.
 The captured value is formatted without a leading slash, preserving internal slashes and percent-decoding individual tokens.
@@ -84,7 +121,9 @@ let router =
 
 ---
 
-## 5. Router Merging (`fist.merge`)\n\nYou can combine two independent routers with identical context and output types using `fist.merge`:
+## 6. Router Merging (`fist.merge`)
+
+You can combine two independent routers with identical context and output types using `fist.merge`:
 
 ```gleam
 let user_router =
@@ -103,7 +142,7 @@ If two merged routers contain conflicting endpoints or conflicting dynamic param
 
 ---
 
-## 6. Route Groups & Middlewares
+## 7. Route Groups & Middlewares
 
 ### Groups
 Organize related routes under a common path prefix and apply shared middlewares:
@@ -141,7 +180,117 @@ let router =
 
 ---
 
-## 7. Metadata & Documentation (`describe`, `inspect`)
+## 8. Named Routes & Reverse Routing (`fist.name`, `fist.path`)
+
+Assign semantic names to your routes to generate canonical URLs throughout your application:
+
+```gleam
+let router =
+  fist.new()
+  |> fist.get("/users/:id/profile", to: show_profile)
+  |> fist.guard("id", when: extract.is_int)
+  |> fist.name("user_profile")
+```
+
+### Generating URLs with `fist.path`
+```gleam
+// 1. Valid parameter generates URL
+fist.path(router, for: "user_profile", with: [#("id", "42")])
+// -> Ok("/users/42/profile")
+
+// 2. Extra parameters are automatically appended as query string
+fist.path(router, for: "user_profile", with: [
+  #("id", "42"),
+  #("tab", "activity"),
+  #("sort", "desc"),
+])
+// -> Ok("/users/42/profile?tab=activity&sort=desc")
+```
+
+### Bidirectional Guard Enforcement
+If a parameter fails the route's guard predicate, `fist.path` refuses to generate an invalid URL:
+
+```gleam
+fist.path(router, for: "user_profile", with: [#("id", "not-a-number")])
+// -> Error(fist.InvalidParameter(route: "user_profile", param: "id", value: "not-a-number"))
+```
+
+### Error Handling
+`fist.path` returns a `Result(String, fist.PathError)`:
+*   `Error(RouteNotFound(name))`: Route name is not registered.
+*   `Error(MissingParameter(route, missing))`: A required path parameter was omitted.
+*   `Error(InvalidParameter(route, param, value))`: The value is empty or failed its guard predicate.
+
+---
+
+## 9. Decoupled Context Pattern (`PathRegistry`)
+
+To allow route handlers to generate paths without introducing circular type dependencies (e.g. `Router` stored inside `AppContext` which is required by `Router`), Fist provides the opaque type **`PathRegistry`**.
+
+### Full Application Example
+
+```gleam
+import fist.{type PathRegistry}
+import gleam/http/request.{type Request}
+import gleam/http/response.{type Response}
+
+// 1. Context stores only the lightweight PathRegistry
+pub type AppContext {
+  AppContext(registry: PathRegistry)
+}
+
+// 2. Handlers generate URLs via fist.path_from
+fn handle_redirect(_req: Request(String), ctx: AppContext, _params) -> Response(String) {
+  case fist.path_from(ctx.registry, for: "user_profile", with: [#("id", "99")]) {
+    Ok(url) ->
+      response.new(302)
+      |> response.set_header("location", url)
+      |> response.set_body("")
+    Error(_) ->
+      response.new(500) |> response.set_body("Routing error")
+  }
+}
+
+// 3. Build router and extract registry from the completed root router
+pub fn app() {
+  let router =
+    fist.new()
+    |> fist.get("/users/:id", to: fn(_, _, _) { response.new(200) |> response.set_body("Profile") })
+    |> fist.name("user_profile")
+    |> fist.get("/jump", to: handle_redirect)
+
+  let registry = fist.path_registry(router)
+  let ctx = AppContext(registry: registry)
+
+  #(router, ctx)
+}
+```
+
+> [!IMPORTANT]
+> Always extract `fist.path_registry` from your **final root router** after all `mount`, `merge`, and `group` operations are complete to ensure all mount prefixes are captured.
+
+---
+
+## 10. Inspecting Named Routes
+
+You can inspect registered route templates for debugging, sitemaps, or admin dashboards:
+
+```gleam
+let registry = fist.path_registry(router)
+
+// Check if a route name exists
+fist.has_path(registry, "user_profile") // -> True
+
+// List all registered route names
+fist.path_names(registry) // -> ["user_profile", "jump"]
+
+// Inspect canonical template pattern
+fist.path_template(registry, "user_profile") // -> Ok("/users/:id")
+```
+
+---
+
+## 11. Metadata & Documentation (`describe`, `inspect`)
 
 You can document endpoints immediately after registering them:
 
@@ -159,7 +308,7 @@ let routes = fist.inspect(router)
 
 ---
 
-## 8. Execution & HTTP Status Handling
+## 12. Execution & HTTP Status Handling
 
 Dispatch requests using `fist.handle`:
 
@@ -228,7 +377,7 @@ pub fn dispatch(router, req, ctx) {
 
 ---
 
-## 9. Typed Parameter Extractors (`fist/extract`)
+## 13. Typed Parameter Extractors (`fist/extract`)
 
 The `fist/extract` module provides pure, ergonomic helpers to extract and parse path and query parameters into concrete Gleam types, avoiding boilerplate string parsing inside your route handlers.
 
