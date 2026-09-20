@@ -1,4 +1,5 @@
 import fist/internal/path
+import fist/internal/reverse
 import fist/internal/types.{
   type DynamicBranch, type Node, type Router, DynamicBranch, Node, Route, Router,
   empty_node, new_router,
@@ -566,6 +567,7 @@ pub fn route(
   Router(
     routes: dict.insert(router.routes, method, updated_root),
     last_added: Some(#(method, segments)),
+    named_routes: router.named_routes,
   )
 }
 
@@ -581,6 +583,7 @@ pub fn describe(
           Router(
             routes: dict.insert(router.routes, method, updated_root),
             last_added: router.last_added,
+            named_routes: router.named_routes,
           )
         }
         Error(_) -> router
@@ -588,6 +591,13 @@ pub fn describe(
     }
     None -> router
   }
+}
+
+pub fn name(
+  router: Router(req_body, ctx, output),
+  route_name: String,
+) -> Router(req_body, ctx, output) {
+  reverse.name_route(router, route_name)
 }
 
 pub fn guard(
@@ -610,9 +620,17 @@ pub fn guard(
             Ok(root) -> {
               let updated_root =
                 update_guard(root, segments, param_name, predicate)
+              let updated_named =
+                reverse.update_template_guard(
+                  router.named_routes,
+                  segments,
+                  param_name,
+                  predicate,
+                )
               Router(
                 routes: dict.insert(router.routes, method, updated_root),
                 last_added: router.last_added,
+                named_routes: updated_named,
               )
             }
             Error(_) -> router
@@ -633,7 +651,11 @@ pub fn map_context(
     dict.map_values(router.routes, fn(_, node) {
       map_node_context(node, mapper)
     })
-  Router(routes: new_routes, last_added: None)
+  Router(
+    routes: new_routes,
+    last_added: None,
+    named_routes: router.named_routes,
+  )
 }
 
 pub fn map(
@@ -642,7 +664,11 @@ pub fn map(
 ) -> Router(req_body, ctx, b) {
   let new_routes =
     dict.map_values(router.routes, fn(_, node) { map_node(node, fun) })
-  Router(routes: new_routes, last_added: None)
+  Router(
+    routes: new_routes,
+    last_added: None,
+    named_routes: router.named_routes,
+  )
 }
 
 pub fn mount(
@@ -670,7 +696,17 @@ pub fn mount(
       )
     })
 
-  Router(routes: mounted_router.routes, last_added: None)
+  let updated_named =
+    reverse.mount_named_routes(
+      parent.named_routes,
+      sub_router.named_routes,
+      prefix_segments,
+    )
+  Router(
+    routes: mounted_router.routes,
+    last_added: None,
+    named_routes: updated_named,
+  )
 }
 
 pub fn merge(
@@ -678,7 +714,13 @@ pub fn merge(
   b: Router(req, ctx, out),
 ) -> Router(req, ctx, out) {
   let combined_routes = dict.combine(a.routes, b.routes, merge_nodes)
-  Router(routes: combined_routes, last_added: None)
+  let combined_named =
+    reverse.merge_named_routes(a.named_routes, b.named_routes)
+  Router(
+    routes: combined_routes,
+    last_added: None,
+    named_routes: combined_named,
+  )
 }
 
 pub fn wrap(
@@ -688,7 +730,11 @@ pub fn wrap(
 ) -> Router(req, ctx, out) {
   let new_routes =
     dict.map_values(router.routes, fn(_, node) { wrap_node(node, middleware) })
-  Router(routes: new_routes, last_added: None)
+  Router(
+    routes: new_routes,
+    last_added: None,
+    named_routes: router.named_routes,
+  )
 }
 
 pub fn group(
