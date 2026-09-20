@@ -40,9 +40,9 @@ Every handler receives three arguments:
 
 ---
 
-## 3. Dynamic Parameters
+## 3. Dynamic Parameters (`:param`)
 
-Prefix a segment with `:` to capture its value. Percent-encoded values are automatically decoded (e.g., `João` from `Jo%C3%A3o`).
+Prefix a segment with `:` to capture a single segment. Percent-encoded values are automatically decoded (e.g., `João` from `Jo%C3%A3o`).
 
 ```gleam
 import fist
@@ -63,7 +63,49 @@ let router =
 
 ---
 
-## 4. Route Groups & Middlewares
+## 4. Wildcard Catch-All (`*param`)
+
+Prefix the terminal segment with `*` to capture all remaining path segments.
+The captured value is formatted without a leading slash, preserving internal slashes and percent-decoding individual tokens.
+
+```gleam
+let router =
+  fist.new()
+  |> fist.get("/static/*filepath", to: fn(_req, _ctx, params) {
+    let filepath = dict.get(params, "filepath") |> result.unwrap("")
+    // Request to /static/css/theme/dark.css yields "css/theme/dark.css"
+    response.new(200) |> response.set_body("Serving: " <> filepath)
+  })
+```
+
+- **Minimum Segment Rule**: A wildcard requires at least one segment to match. For `/static/*filepath`, a request to `/static` returns 404 unless an explicit `/static` route is registered.
+- **Terminal Position**: Wildcards must be the final segment of a path. Registering `/files/*path/download` causes an immediate fail-fast `panic`.
+- **Catch-All Default Name**: Using `/*` defaults the parameter name to `"wildcard"`.
+
+---
+
+## 5. Router Merging (`fist.merge`)
+
+You can combine two independent routers with identical context and output types using `fist.merge`:
+
+```gleam
+let user_router =
+  fist.new()
+  |> fist.get("/users", to: list_users)
+  |> fist.post("/users", to: create_user)
+
+let product_router =
+  fist.new()
+  |> fist.get("/products", to: list_products)
+
+let app_router = fist.merge(user_router, product_router)
+```
+
+If two merged routers contain conflicting endpoints or conflicting dynamic parameter names at the same level, `fist.merge` panics immediately (fail-fast).
+
+---
+
+## 6. Route Groups & Middlewares
 
 ### Groups
 Organize related routes under a common path prefix and apply shared middlewares:
@@ -81,7 +123,7 @@ let router =
 ### Middlewares (`wrap`)
 Middlewares are wrapper functions `(Handler) -> Handler`. They are applied at definition time (*Static Wrapping*), introducing zero Trie lookup overhead at runtime.
 
-Middlewares execute in the exact order declared in the list (outer to inner):
+Middlewares execute in declaration order (the first in the list executes outermost):
 
 ```gleam
 fn log_middleware(next) {
@@ -101,7 +143,7 @@ let router =
 
 ---
 
-## 5. Metadata & Documentation (`describe`, `inspect`)
+## 7. Metadata & Documentation (`describe`, `inspect`)
 
 You can document endpoints immediately after registering them:
 
@@ -119,7 +161,7 @@ let routes = fist.inspect(router)
 
 ---
 
-## 6. Execution & HTTP Status Handling
+## 8. Execution & HTTP Status Handling
 
 Dispatch requests using `fist.handle`:
 
@@ -169,7 +211,6 @@ pub fn dispatch(router, req, ctx) {
     _ -> {
       fist.handle(router, req, ctx, not_found: fn() {
         case fist.allowed_methods(router, req.path) {
-          // Route exists for other methods -> 405
           [_, ..] as methods -> {
             let allow =
               list.map(methods, string.inspect)
@@ -179,8 +220,6 @@ pub fn dispatch(router, req, ctx) {
             |> response.set_header("allow", allow)
             |> response.set_body("Method Not Allowed")
           }
-
-          // Route does not exist at all -> 404
           [] -> response.new(404) |> response.set_body("Not Found")
         }
       })

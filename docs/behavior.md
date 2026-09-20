@@ -1,54 +1,67 @@
 # Core Concepts & Behavior
 
-Understanding how Fist processes requests will help you design better APIs and avoid common pitfalls.
+Understanding how Fist processes requests will help you design clean APIs and understand its deterministic routing engine.
 
 ## The Trie Structure
 
-Fist uses a **Radix Trie** (Prefix Tree) internally.
-*   **Performance:** Routing is $O(n)$ relative to the path length, meaning it stays fast regardless of having 10 or 10,000 routes.
-*   **Structure:** Paths are split into segments. Each segment is a node in the tree.
+Fist uses a **Radix Trie** (Prefix Tree) internally:
+*   **Performance:** Routing is $O(n)$ relative to the path length, remaining constant regardless of having 10 or 10,000 routes.
+*   **Structure:** Paths are split into segments. Each segment corresponds to a node in the tree.
 
 ## Path Normalization
 
-Fist automatically handles common URL inconsistencies so you don't have to write logic for them:
+Fist automatically handles URL inconsistencies before matching:
 
-*   **Trailing Slashes:** `/users` and `/users/` are treated as the **same route**.
+*   **Trailing Slashes:** `/users` and `/users/` are normalized to the **same route**.
 *   **Double Slashes:** `//api///v1` is normalized to `/api/v1`.
 *   **Case Sensitivity:** Fist is **Case Sensitive**. `/Users` is distinct from `/users`.
 *   **Percent-Encoding:** Parameter values and segments are automatically decoded (e.g., `/user/Jo%C3%A3o` extracts `"João"`, `/search/c%2B%2B` extracts `"c++"`).
-*   **Query Strings & Fragments:** Stripped cleanly from the path matching (`/users?limit=10#top` matches `/users`).
+*   **Query Strings & Fragments:** Stripped cleanly from path matching (`/users?limit=10#top` matches `/users`).
 
 ## Precedence & Priority
 
-When a request matches multiple possibilities (e.g., a static route and a wildcard), Fist follows this strict priority order:
+When a request URL could potentially match multiple routes, Fist resolves conflicts using a strict 3-tier specificity hierarchy:
 
-1.  **Exact Static Match**
-    *   Example: `/posts/new` takes priority over `/posts/:id`.
-2.  **Dynamic Match**
-    *   Example: `/posts/:id` matches if no static route matches.
-3.  **Backtracking**
-    *   If a static segment matches partially but fails deeper down, Fist backtracks to check for dynamic matches at that level.
+$$\mathbf{Static} \;\;>\;\; \mathbf{Dynamic \; (:param)} \;\;>\;\; \mathbf{Wildcard \; (*param)}$$
 
-## Constraints
+1.  **Exact Static Match:**
+    *   `/posts/new` takes priority over `/posts/:id` and `/posts/*rest`.
+2.  **Dynamic Match (`:param`):**
+    *   `/users/:id` matches single segments if no static route matches.
+3.  **Wildcard Catch-All (`*param`):**
+    *   `/static/*filepath` matches all remaining segments if neither static nor dynamic branches match.
+4.  **Deep Backtracking:**
+    *   If traversal down a static or dynamic branch hits a dead-end without finding a handler, Fist automatically backtracks to ancestor wildcard catch-alls to check for a looser match.
 
-### The "Same Level" Constraint
+## Fail-Fast Safety & Collision Protection
 
-Because of the Trie structure, **you cannot register two different dynamic parameter names at the exact same position in the tree**. 
+Fist embraces a strict **Fail-Fast** design philosophy. Ambiguous routes, duplicate endpoints, and conflicting segment names **panic immediately** at startup rather than silently overwriting each other.
 
-If you do, the last one defined will **overwrite** the parameter name for all handlers at that position.
+### 1. Duplicate Routes Panic
+Registering the exact same HTTP method and path twice on a router (or combining them via `fist.merge` or `fist.mount`) causes an immediate runtime panic:
 
-**❌ Conflicting (Last one wins):**
 ```gleam
+// 💥 Panics: duplicate route already registered
 fist.new()
-|> fist.get("/api/:user_id/posts", handler_a)
-|> fist.get("/api/:id/settings", handler_b)
-// Result: Both handlers will receive "id" as the parameter key.
-// In handler_a, dict.get(params, "user_id") will return Error(Nil).
+|> fist.get("/endpoint", handler_v1)
+|> fist.get("/endpoint", handler_v2)
 ```
 
-**✅ Recommended (Unique names or prefixes):**
+### 2. Conflicting Dynamic Parameter Names Panic
+Because a Radix Trie node can only bind one dynamic parameter name per level, defining different names at the same level panics:
+
 ```gleam
+// 💥 Panics: cannot register ':user_id' because ':id' is already registered at this level
 fist.new()
-|> fist.get("/users/:user_id/posts", handler_a)
-|> fist.get("/products/:product_id/settings", handler_b)
+|> fist.get("/users/:id/profile", handler_a)
+|> fist.get("/users/:user_id/settings", handler_b)
 ```
+
+**✅ Solution:** Use consistent parameter names (`/users/:id/profile` and `/users/:id/settings`). When identical names are used, branches merge cleanly.
+
+### 3. Wildcard Rules & Invariants
+
+*   **Terminal Position:** A wildcard must be the final segment in a path. Registering `/files/*path/details` panics.
+*   **Minimum Segment Requirement:** A wildcard requires at least one segment to match. Requesting `/files` against `/files/*path` yields 404, allowing `/files` to serve a directory listing and `/files/*path` to serve file downloads.
+*   **No Leading Slash:** The captured string is clean and relative (e.g. `"images/photo.png"` instead of `"/images/photo.png"`), preventing directory traversal bugs.
+*   **Prefix Mounting Restriction:** Using a wildcard inside a mount prefix (e.g. `fist.mount(parent, "/api/*rest", sub, ...)`) panics.

@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.7.0
+- **Feat**: Added Wildcard Catch-All routes (`*param` / `/*`) for matching arbitrary multi-segment sub-paths.
+- **Feat**: Implemented strict 3-tier specificity matching: `Static > Dynamic (:param) > Wildcard (*param)` with automatic deep backtracking to ancestor wildcards.
+- **Feat**: Added `fist.merge` for monoidal router combination.
+- **Feat**: Implemented Fail-Fast collision detection: immediate runtime panics for duplicate endpoints, conflicting dynamic parameter names, non-terminal wildcards, and sibling wildcard collisions.
+- **Feat**: Added full cross-target compatibility for both BEAM (Erlang) and JavaScript runtimes.
+- **Test**: Expanded test suite to 84 comprehensive specification tests with zero failures across Erlang and JavaScript targets.
+- **Docs**: Standardized test documentation to specification style and updated core concept guides.
+
 ## v1.6.0
 - **Fix**: Fixed dynamic segment handling in `mount` and `group` prefixes (e.g. `/orgs/:org_id`).
 - **Fix**: Fixed middleware execution order in `fist.group` so middlewares execute in natural declaration order.
