@@ -1,9 +1,9 @@
 import fist
-import gleam/dict
 import gleam/http/request
 import gleam/http/response
 import gleam/list
 import gleeunit/should
+import support
 
 /// Path Normalization Invariant:
 /// Trailing slashes and redundant internal slashes must normalize to the same route target.
@@ -34,23 +34,15 @@ pub fn case_sensitivity_test() {
   fist.handle(router, req_lower, Nil, fn() { "404" }) |> should.equal("lower")
 }
 
-/// Same-Level Dynamic Parameter Overwrite:
-/// Registering distinct parameter names at the identical Trie depth causes the latest key to win.
+/// Dynamic Parameter Conflict Panic:
+/// Registering conflicting dynamic parameter names at the same level panics immediately (fail-fast).
 pub fn parameter_name_conflict_test() {
-  let router =
+  support.rescue(fn() {
     fist.new()
-    |> fist.get("/users/:id/profile", fn(_, _, params) {
-      dict.get(params, "id") |> should.be_error
-      dict.get(params, "user_id") |> should.be_ok
-      "profile"
-    })
-    |> fist.get("/users/:user_id/settings", fn(_, _, params) {
-      dict.get(params, "user_id") |> should.be_ok
-      "settings"
-    })
-
-  let req = request.new() |> request.set_path("/users/123/profile")
-  fist.handle(router, req, Nil, fn() { "404" }) |> should.equal("profile")
+    |> fist.get("/users/:id/profile", fn(_, _, _) { "profile" })
+    |> fist.get("/users/:user_id/settings", fn(_, _, _) { "settings" })
+  })
+  |> should.be_error
 }
 
 /// Description Reset on Router Transformation:
@@ -68,16 +60,16 @@ pub fn describe_after_map_failure_test() {
   route.description |> should.equal("")
 }
 
-/// Root Route Equivalence:
-/// Both empty string ("") and single slash ("/") point to the root Trie node.
+/// Root Route Equivalence & Duplicate Collision:
+/// Both empty string ("") and single slash ("/") map to the root Trie node;
+/// registering both on the same router causes a duplicate route collision panic.
 pub fn empty_path_root_test() {
-  let router =
+  support.rescue(fn() {
     fist.new()
     |> fist.get("", fn(_, _, _) { "empty" })
     |> fist.get("/", fn(_, _, _) { "slash" })
-
-  let req = request.new() |> request.set_path("/")
-  fist.handle(router, req, Nil, fn() { "404" }) |> should.equal("slash")
+  })
+  |> should.be_error
 }
 
 pub type ApiResponse {

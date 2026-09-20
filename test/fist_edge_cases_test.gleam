@@ -7,6 +7,7 @@ import gleam/list
 import gleam/string
 import gleeunit
 import gleeunit/should
+import support
 
 pub fn main() {
   gleeunit.main()
@@ -231,19 +232,15 @@ pub fn root_level_dynamic_route_test() {
   |> should.equal("page about")
 }
 
-/// Route Overwrite Invariant:
-/// Registering the identical HTTP method and path replaces the existing handler.
+/// Duplicate Route Registration Panic:
+/// Attempting to register the identical HTTP method and path causes a fail-fast panic.
 pub fn route_overwriting_test() {
-  let router =
+  support.rescue(fn() {
     fist.new()
     |> fist.get("/endpoint", fn(_, _, _) { "version 1" })
     |> fist.get("/endpoint", fn(_, _, _) { "version 2" })
-
-  let req =
-    request.new() |> request.set_method(Get) |> request.set_path("/endpoint")
-
-  fist.handle(router, req, Nil, fn() { "404" })
-  |> should.equal("version 2")
+  })
+  |> should.be_error
 }
 
 /// Non-Alphanumeric Parameter Tokens:

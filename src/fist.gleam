@@ -5,22 +5,15 @@ import gleam/dict.{type Dict}
 import gleam/http.{type Method, Delete, Get, Head, Options, Patch, Post, Put}
 import gleam/http/request.{type Request}
 
-// --- TYPES RE-EXPORTS ---
+// --- TYPES ---
 
-/// Encapsulates the handler logic and its metadata.
-pub type Route(req_body, ctx, output) =
-  types.Route(req_body, ctx, output)
-
-/// A node in the router's internal Trie structure.
-pub type Node(req_body, ctx, output) =
-  types.Node(req_body, ctx, output)
-
-/// The main Router type. It is opaque to preserve internal implementation details.
+/// Represents the router instance.
+/// Holds the Radix Trie structure for efficient route matching.
 pub opaque type Router(req_body, ctx, output) {
   Router(inner: types.Router(req_body, ctx, output))
 }
 
-/// Information about a registered route, used for introspection/documentation.
+/// Metadata about a registered route, introspectable via `fist.inspect`.
 pub type RouteInfo =
   types.RouteInfo
 
@@ -31,9 +24,9 @@ pub fn new() -> Router(req_body, ctx, output) {
   Router(types.new_router())
 }
 
-// --- PUBLIC API (Route Definition) ---
+// --- ROUTING ---
 
-/// Generic function to add a route for a specific method.
+/// Adds a route for an arbitrary HTTP method and path to the router.
 pub fn route(
   router: Router(req_body, ctx, output),
   method method: Method,
@@ -43,8 +36,7 @@ pub fn route(
   Router(trie.route(router.inner, method, path, handler))
 }
 
-/// Adds a description to the last added route.
-/// This enables the chaining syntax: `|> fist.get(...) |> fist.describe("...")`
+/// Attaches a human-readable description to the last added route.
 pub fn describe(
   router: Router(req_body, ctx, output),
   description: String,
@@ -148,6 +140,16 @@ pub fn mount(
   Router(trie.mount(parent.inner, prefix, sub_router.inner, mapper))
 }
 
+/// Merges two routers with identical context and output types into a single combined router.
+/// Route trees are merged recursively. Collisions in routes or dynamic parameter names
+/// cause an immediate fail-fast panic.
+pub fn merge(
+  a: Router(req, ctx, out),
+  b: Router(req, ctx, out),
+) -> Router(req, ctx, out) {
+  Router(trie.merge(a.inner, b.inner))
+}
+
 /// Wraps all handlers in the router with the given middleware.
 /// A middleware is a function that takes a handler and returns a new, wrapped handler.
 pub fn wrap(
@@ -190,8 +192,8 @@ pub fn handle(
   trie.handle(router.inner, request, context, not_found)
 }
 
-/// Returns a list of all HTTP methods registered for a given path.
-/// Useful for CORS preflight (OPTIONS) or returning 405 Method Not Allowed.
+/// Returns a list of all HTTP methods supported for the given path.
+/// Useful for handling CORS preflight OPTIONS requests and 405 Method Not Allowed responses.
 pub fn allowed_methods(
   router: Router(req_body, ctx, output),
   path: String,
@@ -199,10 +201,7 @@ pub fn allowed_methods(
   trie.allowed_methods(router.inner, path)
 }
 
-// --- INTROSPECTION ---
-
-/// Returns a list of all registered routes with their metadata.
-/// Useful for generating documentation (OpenAPI) or debugging.
+/// Returns a list of all registered routes and their metadata.
 pub fn inspect(router: Router(req_body, ctx, output)) -> List(RouteInfo) {
   inspect.inspect(router.inner)
 }

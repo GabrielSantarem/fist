@@ -8,8 +8,10 @@ import gleam/http/request.{type Request}
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
+import gleam/string
 
 /// Recursively inserts a route into the Trie.
+/// Panics if an identical route already exists or if dynamic parameter names conflict.
 pub fn insert_route(
   node: Node(req_body, ctx, output),
   segments: List(String),
@@ -17,13 +19,31 @@ pub fn insert_route(
 ) -> Node(req_body, ctx, output) {
   case segments {
     [] -> {
-      let new_route = Route(handler: handler, description: None)
-      Node(..node, route: Some(new_route))
+      case node.route {
+        Some(_) ->
+          panic as "Route collision: duplicate route already registered for this method and path"
+        None -> {
+          let new_route = Route(handler: handler, description: None)
+          Node(..node, route: Some(new_route))
+        }
+      }
     }
 
     [":" <> param_name, ..rest] -> {
       let child = case node.dynamic_child {
-        Some(#(_, child_node)) -> child_node
+        Some(#(existing_name, child_node)) -> {
+          case existing_name == param_name {
+            True -> child_node
+            False ->
+              panic as string.concat([
+                  "Route collision: cannot register dynamic segment ':",
+                  param_name,
+                  "' because ':",
+                  existing_name,
+                  "' is already registered at this path level",
+                ])
+          }
+        }
         None -> empty_node()
       }
       let updated_child = insert_route(child, rest, handler)
@@ -128,18 +148,36 @@ pub fn find_route(
   }
 }
 
-/// Recursively merges two nodes. If both have a route, the second one (b) wins.
+/// Recursively merges two nodes.
+/// Panics if both nodes define a route or if dynamic segment names conflict.
 pub fn merge_nodes(
   a: Node(req, ctx, out),
   b: Node(req, ctx, out),
 ) -> Node(req, ctx, out) {
-  let route = option.or(b.route, a.route)
+  let route = case a.route, b.route {
+    Some(_), Some(_) ->
+      panic as "Route collision: duplicate route found while merging routers"
+    Some(r_a), None -> Some(r_a)
+    None, Some(r_b) -> Some(r_b)
+    None, None -> None
+  }
+
   let static_children =
     dict.combine(a.static_children, b.static_children, merge_nodes)
 
   let dynamic_child = case a.dynamic_child, b.dynamic_child {
-    Some(#(_, child_a)), Some(#(name_b, child_b)) -> {
-      Some(#(name_b, merge_nodes(child_a, child_b)))
+    Some(#(name_a, child_a)), Some(#(name_b, child_b)) -> {
+      case name_a == name_b {
+        True -> Some(#(name_a, merge_nodes(child_a, child_b)))
+        False ->
+          panic as string.concat([
+              "Route collision: cannot merge dynamic segments ':",
+              name_a,
+              "' and ':",
+              name_b,
+              "' at the same path level",
+            ])
+      }
     }
     None, some_b -> some_b
     some_a, None -> some_a
@@ -320,6 +358,14 @@ pub fn mount(
     })
 
   Router(routes: mounted_router.routes, last_added: None)
+}
+
+pub fn merge(
+  a: Router(req, ctx, out),
+  b: Router(req, ctx, out),
+) -> Router(req, ctx, out) {
+  let combined_routes = dict.combine(a.routes, b.routes, merge_nodes)
+  Router(routes: combined_routes, last_added: None)
 }
 
 pub fn wrap(
