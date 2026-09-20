@@ -11,7 +11,8 @@ import gleam/result
 import gleam/string
 
 /// Recursively inserts a route into the Trie.
-/// Panics if an identical route already exists or if dynamic parameter names conflict.
+/// Panics if an identical route already exists, if dynamic/wildcard names conflict,
+/// or if a wildcard is placed non-terminally.
 pub fn insert_route(
   node: Node(req_body, ctx, output),
   segments: List(String),
@@ -25,6 +26,37 @@ pub fn insert_route(
         None -> {
           let new_route = Route(handler: handler, description: None)
           Node(..node, route: Some(new_route))
+        }
+      }
+    }
+
+    ["*" <> raw_name, ..rest] -> {
+      case rest {
+        [_, ..] ->
+          panic as string.concat([
+              "Invalid route: wildcard '*",
+              raw_name,
+              "' must be the final segment of the path",
+            ])
+        [] -> {
+          let param_name = case raw_name {
+            "" -> "wildcard"
+            _ -> raw_name
+          }
+          case node.wildcard_child {
+            Some(#(existing_name, _)) ->
+              panic as string.concat([
+                  "Route collision: cannot register wildcard '*",
+                  param_name,
+                  "' because '*",
+                  existing_name,
+                  "' is already registered at this path level",
+                ])
+            None -> {
+              let new_route = Route(handler: handler, description: None)
+              Node(..node, wildcard_child: Some(#(param_name, new_route)))
+            }
+          }
         }
       }
     }
@@ -81,6 +113,16 @@ pub fn update_description(
       }
     }
 
+    ["*" <> _, ..] -> {
+      case node.wildcard_child {
+        Some(#(p, r)) -> {
+          let updated_r = Route(..r, description: Some(desc))
+          Node(..node, wildcard_child: Some(#(p, updated_r)))
+        }
+        None -> node
+      }
+    }
+
     [":" <> _, ..rest] -> {
       case node.dynamic_child {
         Some(#(p, child)) -> {
@@ -107,6 +149,8 @@ pub fn update_description(
 }
 
 /// Recursively traverses the Trie to find a matching handler.
+/// Follows strict precedence: Static > Dynamic (:param) > Wildcard (*catch_all),
+/// with full backtracking support.
 pub fn find_route(
   node: Node(req_body, ctx, output),
   segments: List(String),
@@ -127,12 +171,14 @@ pub fn find_route(
     }
 
     [segment, ..rest] -> {
-      let static_match = case dict.get(node.static_children, segment) {
+      // 1. Try static match
+      let static_result = case dict.get(node.static_children, segment) {
         Ok(child) -> find_route(child, rest, params)
         Error(Nil) -> Error(Nil)
       }
 
-      case static_match {
+      // 2. If static failed, try dynamic segment match (:param)
+      let dynamic_result = case static_result {
         Ok(match) -> Ok(match)
         Error(Nil) -> {
           case node.dynamic_child {
@@ -144,12 +190,28 @@ pub fn find_route(
           }
         }
       }
+
+      // 3. If dynamic match failed, backtrack to wildcard catch-all (*param)
+      case dynamic_result {
+        Ok(match) -> Ok(match)
+        Error(Nil) -> {
+          case node.wildcard_child {
+            Some(#(param_name, route)) -> {
+              let wildcard_val = string.join(segments, "/")
+              let final_params = dict.insert(params, param_name, wildcard_val)
+              Ok(#(route.handler, final_params))
+            }
+            None -> Error(Nil)
+          }
+        }
+      }
     }
   }
 }
 
 /// Recursively merges two nodes.
-/// Panics if both nodes define a route or if dynamic segment names conflict.
+/// Panics if both nodes define a route, if dynamic parameter names conflict,
+/// or if wildcards conflict at the same level.
 pub fn merge_nodes(
   a: Node(req, ctx, out),
   b: Node(req, ctx, out),
@@ -183,16 +245,37 @@ pub fn merge_nodes(
     some_a, None -> some_a
   }
 
-  Node(route, static_children, dynamic_child)
+  let wildcard_child = case a.wildcard_child, b.wildcard_child {
+    Some(#(name_a, _)), Some(#(name_b, _)) -> {
+      panic as string.concat([
+          "Route collision: cannot merge wildcards '*",
+          name_a,
+          "' and '*",
+          name_b,
+          "' at the same path level",
+        ])
+    }
+    None, some_b -> some_b
+    some_a, None -> some_a
+  }
+
+  Node(route, static_children, dynamic_child, wildcard_child)
 }
 
 /// Creates a new tree from a list of segments that leads to the given sub-tree.
+/// Panics if a wildcard is placed in the prefix path.
 pub fn prefix_node(
   segments: List(String),
   sub_tree: Node(req, ctx, out),
 ) -> Node(req, ctx, out) {
   case segments {
     [] -> sub_tree
+    ["*" <> param_name, ..] ->
+      panic as string.concat([
+          "Invalid prefix: wildcard '*",
+          param_name,
+          "' cannot be used in a route prefix",
+        ])
     [":" <> param_name, ..rest] -> {
       let child = prefix_node(rest, sub_tree)
       let empty = empty_node()
@@ -229,7 +312,16 @@ pub fn map_node_context(
       #(name, map_node_context(child, mapper))
     })
 
-  Node(new_route, new_static, new_dynamic)
+  let new_wildcard =
+    option.map(node.wildcard_child, fn(pair) {
+      let #(name, r) = pair
+      let new_handler = fn(req, ctx_a, params) {
+        r.handler(req, mapper(ctx_a), params)
+      }
+      #(name, Route(handler: new_handler, description: r.description))
+    })
+
+  Node(new_route, new_static, new_dynamic, new_wildcard)
 }
 
 pub fn map_node(
@@ -253,7 +345,16 @@ pub fn map_node(
       #(name, map_node(child, fun))
     })
 
-  Node(new_route, new_static, new_dynamic)
+  let new_wildcard =
+    option.map(node.wildcard_child, fn(pair) {
+      let #(name, r) = pair
+      let new_handler = fn(req, ctx, params) {
+        r.handler(req, ctx, params) |> fun
+      }
+      #(name, Route(handler: new_handler, description: r.description))
+    })
+
+  Node(new_route, new_static, new_dynamic, new_wildcard)
 }
 
 pub fn wrap_node(
@@ -277,7 +378,13 @@ pub fn wrap_node(
       #(name, wrap_node(child, middleware))
     })
 
-  Node(new_route, new_static, new_dynamic)
+  let new_wildcard =
+    option.map(node.wildcard_child, fn(pair) {
+      let #(name, r) = pair
+      #(name, Route(handler: middleware(r.handler), description: r.description))
+    })
+
+  Node(new_route, new_static, new_dynamic, new_wildcard)
 }
 
 // --- OPERATIONS ON ROUTER ---

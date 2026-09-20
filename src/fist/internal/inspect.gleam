@@ -42,7 +42,20 @@ pub fn inspect_node(
     option.None -> []
   }
 
-  list.flatten([current_info, static_infos, dynamic_infos])
+  let wildcard_infos = case node.wildcard_child {
+    option.Some(#(param_name, r)) -> [
+      RouteInfo(
+        method: method,
+        path: "/"
+          <> string.join(list.append(path_acc, ["*" <> param_name]), "/"),
+        description: option.unwrap(r.description, ""),
+        params: list.append(params_acc, [param_name]),
+      ),
+    ]
+    option.None -> []
+  }
+
+  list.flatten([current_info, static_infos, dynamic_infos, wildcard_infos])
 }
 
 pub fn inspect(router: Router(req_body, ctx, output)) -> List(RouteInfo) {

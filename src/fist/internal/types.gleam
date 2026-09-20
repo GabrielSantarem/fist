@@ -18,8 +18,10 @@ pub type Node(req_body, ctx, output) {
     route: Option(Route(req_body, ctx, output)),
     /// Static children are exact string matches (e.g., "users", "settings").
     static_children: Dict(String, Node(req_body, ctx, output)),
-    /// A dynamic child is a wildcard parameter (e.g., ":id", ":slug").
+    /// A dynamic child is a single-segment wildcard parameter (e.g., ":id", ":slug").
     dynamic_child: Option(#(String, Node(req_body, ctx, output))),
+    /// A wildcard child is a multi-segment catch-all parameter (e.g., "*filepath", "*rest").
+    wildcard_child: Option(#(String, Route(req_body, ctx, output))),
   )
 }
 
@@ -43,10 +45,15 @@ pub type RouteInfo {
 
 /// Helper to create an empty Trie node.
 pub fn empty_node() -> Node(req_body, ctx, output) {
-  Node(route: None, static_children: dict.new(), dynamic_child: None)
+  Node(
+    route: None,
+    static_children: dict.new(),
+    dynamic_child: None,
+    wildcard_child: None,
+  )
 }
 
-/// Helper to create an empty Router.
+/// Helper to create a new, empty Router.
 pub fn new_router() -> Router(req_body, ctx, output) {
   Router(routes: dict.new(), last_added: None)
 }
