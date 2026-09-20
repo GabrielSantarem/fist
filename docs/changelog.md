@@ -1,18 +1,23 @@
 # Changelog
 
-## v1.7.0
+## v1.8.0
 - **Feat**: Added typed parameter extraction module `fist/extract` with ergonomic helpers (`extract.int`, `extract.float`, `extract.bool`, `extract.string`, `extract.non_empty_string`, `extract.uuid`, `extract.custom`).
-- **Feat**: Added first-class `use` expression extractors (`extract.require_int`, `extract.require_bool`, `extract.require_string`, etc.) for clean early-return error handling in handlers.
+- **Feat**: Added first-class `use` expression extractors (`extract.require_int`, `extract.require_bool`, `extract.require_string`, etc.) for idiomatic early-return error handling in handlers.
 - **Feat**: Added request query string helpers (`extract.query_params`, `extract.query_string`, `extract.query_int`, `extract.query_bool`).
+- **Feat**: Added auto-generated TypeScript declarations (`.d.mts`) with generic parameter typing for JavaScript/TypeScript projects.
+- **Chore**: Aligned `gleam.toml` with official specification, added explicit Codeberg/Hex links, and isolated `internal_modules` to keep public HexDocs clean.
+- **Docs**: Added Section 9 to User Guide detailing parameter extraction patterns and `use` syntax.
+- **Test**: Expanded test suite to 122 automated tests passing with zero failures and zero warnings across Erlang and JavaScript runtimes.
+
+## v1.7.0
 - **Feat**: Added Wildcard Catch-All routes (`*param` / `/*`) for matching arbitrary multi-segment sub-paths with clean relative path extraction.
 - **Feat**: Implemented strict 3-tier specificity matching: `Static > Dynamic (:param) > Wildcard (*param)` with automatic deep backtracking to ancestor wildcards.
 - **Feat**: Added `fist.merge` for monoidal router combination.
 - **Feat**: Implemented Fail-Fast collision detection: immediate runtime panics for duplicate endpoints, conflicting dynamic parameter names, empty dynamic parameter names (`/:`), non-terminal wildcards, and sibling wildcard collisions.
 - **Feat**: Implemented RFC 3986 Section 5.2.4 Defensive Path Security (`remove_dot_segments`), resolving `.` and `..`, preventing directory traversal escapes above root, sanitizing null-bytes, and normalizing Windows backslashes.
 - **Feat**: Added full cross-target compatibility with 100% build and runtime parity across both BEAM (Erlang) and JavaScript (Node.js/Bun/Deno/browser) targets.
-- **Feat**: Added auto-generated TypeScript declarations (`.d.mts`) with generic parameter typing for JavaScript/TypeScript projects.
 - **Perf**: Added comprehensive scalability benchmarks verifying $O(k)$ lookups on 2,000+ route Tries, 10,000-request burst dispatches, 50-level path nesting, and large-tree merges.
-- **Test**: Expanded test suite to 122 comprehensive automated tests passing with zero failures and zero warnings across Erlang and JavaScript runtimes.
+- **Test**: Expanded test suite to 111 comprehensive automated tests passing with zero failures and zero warnings across Erlang and JavaScript runtimes.
 - **Docs**: Updated User Guide, Behavior Invariants, Advanced Patterns, and Roadmap for v1.7.0.
 
 ## v1.6.0

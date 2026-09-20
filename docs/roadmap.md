@@ -6,15 +6,19 @@ Project vision, milestone tracking, and architectural research for `fist`.
 
 ## Completed
 
-### v1.7.0
+### v1.8.0
 - **Typed Parameter Extractors (`fist/extract`)**: Pure, ergonomic parameter extraction and validation helpers (`extract.int`, `extract.float`, `extract.bool`, `extract.string`, `extract.non_empty_string`, `extract.uuid`, `extract.custom`) with first-class `use` expression support (`require_*`) and query string helpers (`query_params`, `query_string`, `query_int`, `query_bool`).
+- **TypeScript Declarations Generation**: Auto-generated `.d.mts` definitions with full generic parameter typing for JavaScript and TypeScript consumers.
+- **Packaging & Documentation Isolation**: Aligned `gleam.toml` with the official specification, added explicit Codeberg/Hex links, and marked `internal_modules` to keep public HexDocs clean.
+
+### v1.7.0
 - **Defensive Path Security (RFC 3986)**: Formal Section 5.2.4 `remove_dot_segments` implementation preventing path traversal attacks (`.` and `..`), null-byte sanitization (`\0`), and Windows backslash normalization.
 - **Wildcard Catch-All (`*param` / `/*`)**: Multi-segment path matching capturing all trailing segments.
 - **Strict 3-Tier Precedence**: `Static > Dynamic (:param) > Wildcard (*param)` with automatic deep backtracking to ancestor wildcards on dead-end static branches.
 - **Monoidal Router Merging (`fist.merge`)**: Combining disjoint and compatible routers recursively.
 - **Fail-Fast Collision Protection**: Immediate runtime panic on duplicate endpoints, conflicting dynamic parameter names, or conflicting wildcards.
-- **TypeScript Declarations Generation**: Auto-generated `.d.mts` definitions with generic parameters for JavaScript and TypeScript users.
 - **Full Cross-Target Compatibility**: 100% test coverage and build parity on both BEAM (Erlang) and JavaScript (Node.js/Bun/Deno/browser) runtimes.
+- **Scalability & Stress Benchmarks**: Validated $O(k)$ lookups on 2,000+ route trees, 10,000-burst dispatches, and 50-level path nesting.
 
 ### v1.6.0
 - **Dynamic Mounting & Groups**: Full support for `:param` in `mount` and `group` prefixes (e.g. `/orgs/:org_id`).
