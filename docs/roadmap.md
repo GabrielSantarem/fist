@@ -4,6 +4,25 @@ Project vision, milestone tracking, and architectural research for `fist`.
 
 ---
 
+## Planned Milestones
+
+### v1.9.0 — Developer Ergonomics & Type Safety
+- **Named Routes & Reverse Routing (`fist.name`, `fist.path`)**:
+  - Assign unique, type-friendly identifiers to registered endpoints.
+  - Generate canonical URLs programmatically with safe parameter interpolation (`fist.path(router, "user_profile", [#("id", "42")])`), eliminating broken, hardcoded URL strings across applications.
+- **Constrained Dynamic Routing & Segment Guards (`fist.get_if`, `when`)**:
+  - Add functional predicates to dynamic route segments (e.g. matching numeric `:id` vs alphabetic `:slug` at the same tree depth).
+  - If a guard evaluates to `False`, the router seamlessly continues traversal to subsequent matching branches before returning 404.
+
+### v1.10.0 — Robustness & Standards Compliance
+- **Automatic `HEAD` Method Derivation (RFC 9110)**:
+  - Automatically fulfill HTTP `HEAD` requests using registered `GET` handlers with identical status codes and headers, stripping the response body as mandated by RFC 9110.
+- **Panic Recovery Middleware (`fist.recover`)**:
+  - Provide a zero-overhead error boundary middleware to catch unexpected runtime crashes and uncaught panics within handlers.
+  - Return standardized HTTP 500 error responses and structured error logs without terminating the host BEAM process or JavaScript runtime.
+
+---
+
 ## Completed
 
 ### v1.8.0
@@ -28,7 +47,7 @@ Project vision, milestone tracking, and architectural research for `fist`.
 - **HTTP Helpers**: Added `fist.head`, `fist.options`, and `fist.allowed_methods` for CORS preflight and 405 status codes.
 
 ### v1.5.0
-- **Sub-routers & Mounting**: Modular routing via `fist.mount`.
+- **Sub-routers & Mounting**: Modular routing via `fist.mount` handicapping.
 - **Context Polymorphism**: Mapping sub-router contexts via `fist.map_context`.
 - **Route Groups**: Grouping endpoints under prefixes with `fist.group`.
 - **Static Middlewares**: Functional route wrapping via `fist.wrap`.
@@ -45,10 +64,20 @@ Project vision, milestone tracking, and architectural research for `fist`.
 
 ---
 
-## Future Explorations
+## Future Explorations (Backlog)
 
-### 1. v2.0 Route Documentation & Code Generation
-Explore code generation, expanded schema metadata, and automated OpenAPI 3.1 / TypeScript client generation based on `fist.inspect`.
+### 1. Structured Route Metadata, Tags & Scopes
+- Allow attaching domain tags, authorization scopes, and rate limits to routes (`fist.tag(["admin", "internal"])`, `fist.require_scope(["metrics:read"])`).
+- Enable middlewares to introspect the route definition and enforce access control policies declaratively.
 
-### 2. Multi-Tenant / Host-Based Routing
-Explore virtual-host and subdomain multiplexing (`req.host`) for multi-tenant applications.
+### 2. Multi-Tenant & Host-Based Routing (`fist.host`)
+- Virtual-host and subdomain multiplexing (`api.example.com`, `admin.example.com`, `*.tenant.com`) based on the request `Host` header.
+
+### 3. Content Negotiation & Format Routing
+- Route matching based on request `Accept` headers or URL extensions (`/reports.json` vs `/reports.csv`).
+
+### 4. Configurable Trailing Slash Policy
+- Configurable redirect actions (`RedirectSlash` 308 permanent redirect vs current silent `Normalize`).
+
+### 5. v2.0 Route Documentation & Code Generation
+- Automated OpenAPI 3.1 specification extraction and TypeScript client SDK generation based on structured route metadata and `fist.inspect`.
