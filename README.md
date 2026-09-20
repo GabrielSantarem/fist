@@ -91,4 +91,4 @@ Full documentation is published on [HexDocs](https://hexdocs.pm/fist/):
 - **[Advanced Patterns](advanced.html)**: Context polymorphism, ADT output mapping, and modular router merging.
 - **[Roadmap](roadmap.html)**: Upcoming features and architectural exploration.
 
-*(Repository markdown sources are available in the [`docs/`](https://codeberg.org/MrTomate/fist/src/branch/main/docs) directory).*
+*(Repository markdown sources are available in the [`docs/`](https://codeberg.org/MrTomate/fist/src/branch/master/docs) directory).*
