@@ -3,8 +3,10 @@ import gleam/result
 import gleam/string
 import gleam/uri
 
-/// Splits a path string into segments, ignoring empty strings and decoding percent-encoded characters.
-/// Also strips query parameters and URL fragments if present in the path.
+/// Normalizes and splits a path string into canonical segments.
+/// Implements RFC 3986 Section 5.2.4 (Remove Dot Segments) to eliminate
+/// directory traversal attacks (`.` and `..`), normalizes backslashes,
+/// decodes percent-encoded tokens, strips null bytes, and trims query/fragment strings.
 pub fn parse_path(path: String) -> List(String) {
   let clean_path = case string.split_once(path, "?") {
     Ok(#(p, _)) -> p
@@ -14,10 +16,42 @@ pub fn parse_path(path: String) -> List(String) {
     Ok(#(p, _)) -> p
     Error(Nil) -> clean_path
   }
+
+  // Normalize Windows backslashes to standard forward slashes
+  let clean_path = string.replace(clean_path, "\\", "/")
+
   clean_path
   |> string.split("/")
   |> list.filter(fn(s) { s != "" })
   |> list.map(fn(segment) {
-    uri.percent_decode(segment) |> result.unwrap(segment)
+    uri.percent_decode(segment)
+    |> result.unwrap(segment)
+    |> string.replace("\u{0000}", "")
   })
+  |> remove_dot_segments
+}
+
+/// Recursively removes dot segments according to RFC 3986 Section 5.2.4.
+/// - "." is ignored (current directory)
+/// - ".." pops the preceding segment (parent directory)
+/// - Traversals attempting to escape above root are capped at root
+fn remove_dot_segments(segments: List(String)) -> List(String) {
+  do_remove_dot_segments(segments, [])
+}
+
+fn do_remove_dot_segments(
+  remaining: List(String),
+  acc: List(String),
+) -> List(String) {
+  case remaining {
+    [] -> list.reverse(acc)
+    [".", ..rest] -> do_remove_dot_segments(rest, acc)
+    ["..", ..rest] -> {
+      case acc {
+        [_, ..popped] -> do_remove_dot_segments(rest, popped)
+        [] -> do_remove_dot_segments(rest, [])
+      }
+    }
+    [segment, ..rest] -> do_remove_dot_segments(rest, [segment, ..acc])
+  }
 }

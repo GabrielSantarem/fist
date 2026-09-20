@@ -7,6 +7,7 @@ Project vision, milestone tracking, and architectural research for `fist`.
 ## Completed
 
 ### v1.7.0
+- **Defensive Path Security (RFC 3986)**: Formal Section 5.2.4 `remove_dot_segments` implementation preventing path traversal attacks (`.` and `..`), null-byte sanitization (`\0`), and Windows backslash normalization.
 - **Wildcard Catch-All (`*param` / `/*`)**: Multi-segment path matching capturing all trailing segments.
 - **Strict 3-Tier Precedence**: `Static > Dynamic (:param) > Wildcard (*param)` with automatic deep backtracking to ancestor wildcards on dead-end static branches.
 - **Monoidal Router Merging (`fist.merge`)**: Combining disjoint and compatible routers recursively.
@@ -21,7 +22,7 @@ Project vision, milestone tracking, and architectural research for `fist`.
 - **HTTP Helpers**: Added `fist.head`, `fist.options`, and `fist.allowed_methods` for CORS preflight and 405 status codes.
 
 ### v1.5.0
-- **Sub-routers & Mounting**: Modular routing via `fist.mount``.
+- **Sub-routers & Mounting**: Modular routing via `fist.mount`.
 - **Context Polymorphism**: Mapping sub-router contexts via `fist.map_context`.
 - **Route Groups**: Grouping endpoints under prefixes with `fist.group`.
 - **Static Middlewares**: Functional route wrapping via `fist.wrap`.
@@ -40,8 +41,11 @@ Project vision, milestone tracking, and architectural research for `fist`.
 
 ## Future Explorations
 
-### 1. Typed Route Extractors
-Investigate safe parameter extraction directly into handlers (e.g., extracting integer IDs or UUIDs without manual string parsing in handlers).
+### 1. Typed Primitive Extractors (`fist/extract`)
+Ergonomic parameter extraction helpers for handlers (`extract.int`, `extract.string`, `extract.bool`) reducing manual parsing boilerplate while keeping the core router minimal.
 
-### 2. OpenAPI / Swagger Generation
-Leverage `fist.inspect` to build automated OpenAPI 3.0 specification generators from router metadata and registered descriptions.
+### 2. v2.0 Route Documentation & Code Generation
+Explore code generation, expanded schema metadata, and automated OpenAPI 3.1 / TypeScript client generation based on `fist.inspect`.
+
+### 3. Multi-Tenant / Host-Based Routing
+Explore virtual-host and subdomain multiplexing (`req.host`) for multi-tenant applications.

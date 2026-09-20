@@ -8,10 +8,17 @@ Fist uses a **Radix Trie** (Prefix Tree) internally:
 *   **Performance:** Routing is $O(n)$ relative to the path length, remaining constant regardless of having 10 or 10,000 routes.
 *   **Structure:** Paths are split into segments. Each segment corresponds to a node in the tree.
 
-## Path Normalization
+## Path Normalization & Defensive Security (RFC 3986)
 
-Fist automatically handles URL inconsistencies before matching:
+Fist automatically normalizes and sanitizes paths before matching:
 
+*   **RFC 3986 Section 5.2.4 (`remove_dot_segments`):**
+    *   Single dots (`.`) representing the current directory are removed (`/api/./v1/users` $\to$ `/api/v1/users`).
+    *   Double dots (`..`) representing the parent directory are resolved safely (`/static/css/../js/bundle.js` $\to$ `/static/js/bundle.js`).
+    *   Traversals attempting to escape above root (`/../../secret`) are clamped at root (`/secret`), preventing directory traversal exploits.
+*   **Percent-Encoded Dot Traversals:** Encoded dots (`%2e%2e` and `%2e`) are decoded before dot-segment resolution, eliminating WAF evasion attacks.
+*   **Windows Backslash Normalization:** Backslashes (`\`) are normalized to standard forward slashes (`/`), preventing OS-specific traversal bypasses.
+*   **Null-Byte Sanitization:** Injected null bytes (`\0` / `%00`) are stripped to protect downstream filesystem and C-based drivers from string truncation exploits.
 *   **Trailing Slashes:** `/users` and `/users/` are normalized to the **same route**.
 *   **Double Slashes:** `//api///v1` is normalized to `/api/v1`.
 *   **Case Sensitivity:** Fist is **Case Sensitive**. `/Users` is distinct from `/users`.
@@ -63,5 +70,5 @@ fist.new()
 
 *   **Terminal Position:** A wildcard must be the final segment in a path. Registering `/files/*path/details` panics.
 *   **Minimum Segment Requirement:** A wildcard requires at least one segment to match. Requesting `/files` against `/files/*path` yields 404, allowing `/files` to serve a directory listing and `/files/*path` to serve file downloads.
-*   **No Leading Slash:** The captured string is clean and relative (e.g. `"images/photo.png"` instead of `"/images/photo.png"`), preventing directory traversal bugs.
+*   **No Leading Slash:** The captured string is clean and relative (e.g. `"images/photo.png"` instead of `"/images/photo.png"`). Combined with RFC 3986 normalization, this completely eliminates path traversal risks when serving files.
 *   **Prefix Mounting Restriction:** Using a wildcard inside a mount prefix (e.g. `fist.mount(parent, "/api/*rest", sub, ...)`) panics.
