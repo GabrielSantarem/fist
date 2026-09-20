@@ -17,16 +17,20 @@ pub fn parse_path(path: String) -> List(String) {
     Error(Nil) -> clean_path
   }
 
-  // Canonicalize path separators and percent-encoded separators/dots to neutralize WAF evasion
+  // Canonicalize path separators and percent-encoded separators/dots to neutralize WAF evasion.
+  // Note: Only percent-encoded slashes adjacent to traversal dots (..) are treated as path
+  // delimiters so legitimate percent-encoded slashes in parameter values (RFC 3986) remain intact.
   let clean_path =
     clean_path
     |> string.replace("\\", "/")
     |> string.replace("%5c", "/")
     |> string.replace("%5C", "/")
-    |> string.replace("%2f", "/")
-    |> string.replace("%2F", "/")
     |> string.replace("%2e", ".")
     |> string.replace("%2E", ".")
+    |> string.replace("..%2f", "../")
+    |> string.replace("..%2F", "../")
+    |> string.replace("%2f..", "/..")
+    |> string.replace("%2F..", "/..")
 
   clean_path
   |> string.split("/")
@@ -55,10 +59,11 @@ fn do_remove_dot_segments(
     [] -> list.reverse(acc)
     [".", ..rest] -> do_remove_dot_segments(rest, acc)
     ["..", ..rest] -> {
-      case acc {
-        [_, ..popped] -> do_remove_dot_segments(rest, popped)
-        [] -> do_remove_dot_segments(rest, [])
+      let popped_acc = case acc {
+        [] -> []
+        [_, ..tail] -> tail
       }
+      do_remove_dot_segments(rest, popped_acc)
     }
     [segment, ..rest] -> do_remove_dot_segments(rest, [segment, ..acc])
   }

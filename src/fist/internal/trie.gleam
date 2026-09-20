@@ -291,45 +291,59 @@ pub fn update_guard(
     [":" <> param_name, ..rest] -> {
       case param_name == target_param {
         True -> {
+          let has_unguarded =
+            list.any(node.dynamic_children, fn(b) {
+              b.param_name == target_param && b.guard == None
+            })
           let updated_children =
             list.flat_map(node.dynamic_children, fn(branch) {
               case branch.param_name == target_param {
                 True -> {
-                  let kept_child = filter_node_path(branch.child, rest)
-                  let other_child = remove_node_path(branch.child, rest)
-                  case is_node_empty(other_child) {
-                    True -> {
-                      let new_guard = case branch.guard {
-                        Some(prev) -> fn(s) { prev(s) && predicate(s) }
-                        None -> predicate
-                      }
-                      let updated_child =
-                        update_guard(
-                          branch.child,
-                          rest,
-                          target_param,
-                          predicate,
-                        )
-                      [
-                        DynamicBranch(
-                          ..branch,
-                          guard: Some(new_guard),
-                          child: updated_child,
-                        ),
-                      ]
-                    }
+                  case has_unguarded && branch.guard != None {
+                    True -> [branch]
                     False -> {
-                      let guarded_child =
-                        update_guard(kept_child, rest, target_param, predicate)
-                      let guarded_branch =
-                        DynamicBranch(
-                          param_name: branch.param_name,
-                          guard: Some(predicate),
-                          child: guarded_child,
-                        )
-                      let original_branch =
-                        DynamicBranch(..branch, child: other_child)
-                      [guarded_branch, original_branch]
+                      let kept_child = filter_node_path(branch.child, rest)
+                      let other_child = remove_node_path(branch.child, rest)
+                      case is_node_empty(other_child) {
+                        True -> {
+                          let new_guard = case branch.guard {
+                            Some(prev) -> fn(s) { prev(s) && predicate(s) }
+                            None -> predicate
+                          }
+                          let updated_child =
+                            update_guard(
+                              branch.child,
+                              rest,
+                              target_param,
+                              predicate,
+                            )
+                          [
+                            DynamicBranch(
+                              ..branch,
+                              guard: Some(new_guard),
+                              child: updated_child,
+                            ),
+                          ]
+                        }
+                        False -> {
+                          let guarded_child =
+                            update_guard(
+                              kept_child,
+                              rest,
+                              target_param,
+                              predicate,
+                            )
+                          let guarded_branch =
+                            DynamicBranch(
+                              param_name: branch.param_name,
+                              guard: Some(predicate),
+                              child: guarded_child,
+                            )
+                          let original_branch =
+                            DynamicBranch(..branch, child: other_child)
+                          [guarded_branch, original_branch]
+                        }
+                      }
                     }
                   }
                 }
@@ -468,19 +482,17 @@ fn merge_single_branch(
   case branches {
     [] -> [b_branch]
     [a_branch, ..rest_a] -> {
-      case a_branch.param_name == b_branch.param_name {
+      case
+        a_branch.param_name == b_branch.param_name
+        && a_branch.guard == None
+        && b_branch.guard == None
+      {
         True -> {
           let merged_child = merge_nodes(a_branch.child, b_branch.child)
-          let guard = case a_branch.guard, b_branch.guard {
-            Some(g1), Some(g2) -> Some(fn(s) { g1(s) && g2(s) })
-            Some(g), None -> Some(g)
-            None, Some(g) -> Some(g)
-            None, None -> None
-          }
           [
             DynamicBranch(
               param_name: a_branch.param_name,
-              guard: guard,
+              guard: None,
               child: merged_child,
             ),
             ..rest_a
@@ -743,6 +755,7 @@ pub fn guard(
               let updated_named =
                 reverse.update_template_guard(
                   router.named_routes,
+                  method,
                   segments,
                   param_name,
                   predicate,

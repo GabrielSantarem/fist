@@ -4,6 +4,7 @@ import fist/internal/types.{
   empty_node,
 }
 import gleam/dict.{type Dict}
+import gleam/http.{type Method}
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -146,12 +147,16 @@ pub fn name_route(
 /// Updates guards in named route templates if `fist.guard` is called after `fist.name`.
 pub fn update_template_guard(
   named_routes: Dict(String, RouteTemplate),
+  target_method: Method,
   last_added_segments: List(String),
   target_param: String,
   predicate: fn(String) -> Bool,
 ) -> Dict(String, RouteTemplate) {
   dict.map_values(named_routes, fn(_, template) {
-    case matches_segments(template.segments, last_added_segments) {
+    case
+      template.method == target_method
+      && matches_segments(template.segments, last_added_segments)
+    {
       True -> {
         let updated_segments =
           list.map(template.segments, fn(seg) {
