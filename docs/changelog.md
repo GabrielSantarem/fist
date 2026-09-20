@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.9.0
+
+- **Feat**: Added unique incremental route identification (`route_id: Int`) across the core Trie, eliminating guard cross-pollution, template leakage, and metadata overwrites among polymorphic sibling routes (`:id`).
+- **Feat**: Added Named Routes and Reverse Routing (`fist.name`, `fist.path`, `fist.path_from`, `fist.path_registry`) for programmatic, bidirectional URL generation.
+- **Feat**: Implemented strict RFC 3986 dot-segment path traversal rejection in reverse routing: parameter and wildcard values containing `.` or `..` sequences are rejected with `Error(InvalidParameter)`, preventing route escape vulnerabilities.
+- **Feat**: Implemented fail-fast startup and merge detection: registering or merging conflicting terminal dynamic parameter names at the same level without disambiguating guards triggers an immediate panic.
+- **Fix**: Reordered path normalization pipeline in `path.parse_path` to strip null bytes (`%00` and `\u{0000}`) and remove empty segments cleanly, preventing ghost nodes and false 404 mismatches.
+- **Fix**: Preserved percent-encoded slashes (`%2F`) in parameter values during path parsing and reverse routing, ensuring bidirectional soundness and preventing route hijacking.
+- **Test**: Expanded test suite to 202 automated tests passing with zero failures and zero warnings across both BEAM and JavaScript runtimes.
+- **Docs**: Updated User Guide, Behavior Invariants, and Roadmap for v1.9.0.
+
 ## v1.8.0
 
 - **Feat**: Added typed parameter extraction module `fist/extract` with ergonomic helpers (`extract.int`, `extract.float`, `extract.bool`, `extract.string`, `extract.non_empty_string`, `extract.uuid`, `extract.custom`).

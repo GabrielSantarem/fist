@@ -6,15 +6,6 @@ Project vision, milestone tracking, and architectural research for `fist`.
 
 ## Planned Milestones
 
-### v1.9.0 — Developer Ergonomics & Type Safety
-
-- **Named Routes & Reverse Routing (`fist.name`, `fist.path`)**:
-  - Assign unique, type-friendly identifiers to registered endpoints.
-  - Generate canonical URLs programmatically with safe parameter interpolation (`fist.path(router, "user_profile", [#("id", "42")])`), eliminating broken, hardcoded URL strings across applications.
-- **Constrained Dynamic Routing & Route Guards (`fist.guard(param, when: predicate)`)**:
-  - Add functional predicates to dynamic route segments (e.g. matching numeric `:id` vs alphabetic `:slug` at the same tree depth).
-  - If a guard evaluates to `False`, the router seamlessly continues traversal to subsequent matching dynamic branches or wildcards before returning 404.
-
 ### v1.10.0 — Robustness, Observability & Standards Compliance
 
 - **Advanced Routing Diagnostics & Debugging Tooling (`fist.explain`, `fist.trace`, `fist.visualize`)**:
@@ -31,6 +22,15 @@ Project vision, milestone tracking, and architectural research for `fist`.
 ---
 
 ## Completed
+
+### v1.9.0
+
+- **Named Routes & Reverse Routing (`fist.name`, `fist.path`, `fist.path_from`, `fist.path_registry`)**: Programmatic, bidirectional URL generation with full parameter interpolation and query string formatting.
+- **Constrained Dynamic Routing & Route Guards (`fist.guard(param, when: predicate)`)**: Functional predicates attached to dynamic parameters with ordered fallthrough across polymorphic siblings.
+- **Strict Route Identity (`route_id: Int`)**: Unique identity per route in the Radix Trie, guaranteeing 100% isolation of guards, reverse route templates, and descriptions between polymorphic siblings.
+- **Defensive Reverse Path Traversal Rejection (RFC 3986)**: Rejection of dot-segment traversal sequences (`.` and `..`) in dynamic parameter and wildcard values (`Error(InvalidParameter)`).
+- **Startup Fail-Fast Parameter Conflict Panics**: Immediate panic on conflicting terminal dynamic parameter names at the same level without guards.
+- **Clean Null-Byte Stripping**: Reordered ingress pipeline ensuring percent-decoded null bytes (`%00` and `\0`) are eliminated without leaving ghost empty segments.
 
 ### v1.8.0
 
@@ -51,7 +51,7 @@ Project vision, milestone tracking, and architectural research for `fist`.
 ### v1.6.0
 
 - **Dynamic Mounting & Groups**: Full support for `:param` in `mount` and `group` prefixes (e.g. `/orgs/:org_id`).
-- **Middleware Execution Order**: Declarative, outer-to-inner execution order in `fist.group`.
+- **Middleware Execution Order**: Declarative, outer-to-inner execution order in `fist.group` directions.
 - **URL Percent-Decoding**: Automatic decoding of path parameters and UTF-8 characters (`João` -> `João`).
 - **Defensive Path Parsing**: Automatic query string and fragment stripping.
 - **HTTP Helpers**: Added `fist.head`, `fist.options`, and `fist.allowed_methods` for CORS preflight and 405 status codes.
@@ -98,5 +98,3 @@ Project vision, milestone tracking, and architectural research for `fist`.
 - Configurable redirect actions (`RedirectSlash` 308 permanent redirect vs current silent `Normalize`).
 
 ### 5. v2.0 Route Documentation & Code Generation
-
-- Automated OpenAPI 3.1 specification extraction and TypeScript client SDK generation based on structured route metadata and `fist.inspect`.

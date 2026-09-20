@@ -11,6 +11,7 @@ At its core, Fist uses a **Radix Trie** (Prefix Tree) to store and match route p
 - **Algorithmic Efficiency:** Routing lookup time is `O(k)` relative to the number of segments `k` in the request path, remaining constant regardless of whether your application registers 10 or 10,000 routes.
 - **Segment-Based Tree:** Each URL path is tokenized by forward slashes (`/`), where each segment represents a node in the tree.
 - **Polymorphic Sibling Dynamic Children:** Unlike simplistic radix trees that restrict a node to at most one dynamic parameter child, Fist supports multiple dynamic branches per node, disambiguated by route guards and declared priority order.
+- **Strict Route Identity (`route_id`):** Every route registered in the Trie is assigned a unique sequential integer ID (`route_id: Int`). This guarantees complete isolation between sibling routes with polymorphic dynamic parameters, preventing route guard leaks, reverse routing template pollution, or accidental description overwriting.
 
 ---
 
@@ -24,7 +25,7 @@ Before traversing the Trie, Fist sanitizes and canonicalizes incoming paths acco
   - Traversals attempting to escape above root are clamped safely at root: `/../../secret` → `/secret`.
 - **Encoded Traversal Protection:** Percent-encoded dots (`%2e%2e` and `%2e`) are decoded before path canonicalization, neutralizing Web Application Firewall (WAF) evasion attacks.
 - **Backslash Canonicalization:** Windows-style backslashes (`\`) are normalized to standard forward slashes (`/`), preventing OS-dependent traversal bypasses.
-- **Null-Byte Stripping:** Injected null bytes (`\0` and `%00`) are removed to prevent string truncation vulnerabilities in downstream filesystem calls or native C drivers.
+- **Null-Byte Stripping:** Injected null bytes (`\0` and `%00`) are removed and resulting empty segments are discarded, preventing string truncation vulnerabilities and ghost nodes in the routing tree.
 - **Slashes & Case:**
   - Trailing slashes are normalized: `/users` and `/users/` resolve to the same route.
   - Duplicate slashes are collapsed: `//api///v1` becomes `/api/v1` (preventing open-redirect and SSRF parsing confusion).
@@ -134,6 +135,7 @@ A web router should never generate a URL that its own routing engine would rejec
 
 - **Dynamic Segments (`:param`):** Parameter values are percent-encoded using RFC 3986 rules (`uri.percent_encode`). Injected forward slashes (`/`) become `%2F`. This guarantees that user input cannot alter the segment structure of the URL or escape to other routes.
 - **Wildcard Segments (`*param`):** Wildcard values split on `/`, encode each component independently, and rejoin with `/`. Valid multi-level paths (e.g. `docs/guide 2026.pdf`) become `docs/guide%202026.pdf`, preserving path separators without allowing unencoded dangerous characters.
+- **Dot-Segment Traversal Defense (RFC 3986 Section 5.2.4):** Dynamic parameter values and wildcard components attempting path traversal via dot segments (`..`, `.`, or substrings containing `..`) are rejected immediately, returning `Error(InvalidParameter(route, param, value))`. This prevents reverse path generation from accidentally creating escape vectors (`/documents/../../admin`).
 - **Empty Parameter Rejection:** Dynamic parameter segments and wildcard values cannot be empty strings (`""`). Passing `with: [#("id", "")]` returns `Error(InvalidParameter(route: "...", param: "id", value: ""))`, preventing the generation of broken double-slash URLs (e.g. `/users//settings`).
 
 ### Query Parameter Auto-Serialization
@@ -225,6 +227,7 @@ Here is how Fist defends against common mistakes and edge-case errors:
 | **Orphan `fist.name` call** (calling `name` without preceding route) | 💥 Immediate panic: `Invalid route name: fist.name must be called immediately after registering a route` | Place `fist.name` immediately after the route definition. |
 | **Incomplete Registry Extraction** (calling `fist.path_registry(sub)` *before* `fist.mount`) | Generates paths without the mount prefix (e.g. `/items/42` instead of `/api/v1/items/42`). | **Golden Rule:** Always extract `fist.path_registry(root_router)` from your final root router after all `mount` and `merge` operations are complete. |
 | **Empty dynamic parameter value** (`with: [#("id", "")]`) | Returns `Error(InvalidParameter("route", "id", ""))`. Prevents generating broken URLs. | Ensure IDs and tokens are non-empty before calling `fist.path`. |
+| **Dot-segment traversal in parameters** (`with: [#("id", "../../admin")]`) | Returns `Error(InvalidParameter(route, param, value))`. Prevents path traversal escape in generated URLs. | Provide valid segment values without `..` or `.` traversals. |
 | **Attempted Path Injection** (`with: [#("id", "1/delete")]`) | Encodes `/` to `%2F` (`/users/1%2Fdelete`). Does not alter route structure. | Handled automatically. The URL remains safe and predictable. |
 | **Wildcard in mount prefix** (`fist.mount(r, "/api/*rest", ...)`) | 💥 Immediate panic: Wildcards cannot appear in mount prefixes. | Mount prefixes must only contain static or dynamic segments. |
 | **Conflicting dynamic names at same level without guards** | 💥 Immediate panic at startup: Prevents registering ambiguous dynamic branches without disambiguating guards. | Add route guards (e.g. `is_int`) or use consistent parameter names. |
