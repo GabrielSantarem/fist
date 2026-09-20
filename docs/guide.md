@@ -119,7 +119,7 @@ let routes = fist.inspect(router)
 
 ---
 
-## 6. Execution (`handle`, `allowed_methods`)
+## 6. Execution & HTTP Status Handling
 
 Dispatch requests using `fist.handle`:
 
@@ -135,11 +135,56 @@ let response =
   )
 ```
 
-To support CORS preflight (`OPTIONS`) or **405 Method Not Allowed**:
+### Handling 405 Method Not Allowed & CORS Preflight
+
+Use `fist.allowed_methods(router, path)` to inspect registered methods for a given route:
 
 ```gleam
-case fist.allowed_methods(router, req.path) {
-  [] -> not_found_handler()
-  methods -> method_not_allowed_handler(methods)
+import fist
+import gleam/http.{Get, Options, Post}
+import gleam/http/response
+import gleam/list
+import gleam/string
+
+pub fn dispatch(router, req, ctx) {
+  case req.method {
+    // 1. Automatic CORS Preflight
+    Options -> {
+      case fist.allowed_methods(router, req.path) {
+        [] -> response.new(404) |> response.set_body("Not Found")
+        methods -> {
+          let allow =
+            list.map(methods, string.inspect)
+            |> string.join(", ")
+
+          response.new(204)
+          |> response.set_header("access-control-allow-methods", allow)
+          |> response.set_header("access-control-allow-origin", "*")
+          |> response.set_body("")
+        }
+      }
+    }
+
+    // 2. Standard Request Routing
+    _ -> {
+      fist.handle(router, req, ctx, not_found: fn() {
+        case fist.allowed_methods(router, req.path) {
+          // Route exists for other methods -> 405
+          [_, ..] as methods -> {
+            let allow =
+              list.map(methods, string.inspect)
+              |> string.join(", ")
+
+            response.new(405)
+            |> response.set_header("allow", allow)
+            |> response.set_body("Method Not Allowed")
+          }
+
+          // Route does not exist at all -> 404
+          [] -> response.new(404) |> response.set_body("Not Found")
+        }
+      })
+    }
+  }
 }
 ```
