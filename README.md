@@ -85,10 +85,10 @@ pub fn handle_request(req: Request(String), ctx: AppContext) -> Response(String)
 
 ## Documentation
 
-Full documentation is published on [HexDocs](https://hexdocs.pm/fist/):
-- **[User Guide](guide.html)**: Route definitions, wildcards, groups, middlewares, and inspection.
-- **[Core Concepts & Behavior](behavior.html)**: Radix Trie structure, RFC 3986 normalization, backtracking, and fail-fast invariants.
-- **[Advanced Patterns](advanced.html)**: Context polymorphism, ADT output mapping, and modular router merging.
-- **[Roadmap](roadmap.html)**: Upcoming features and architectural exploration.
+Full documentation and API reference are published on [HexDocs](https://hexdocs.pm/fist/):
+- **[User Guide](https://hexdocs.pm/fist/guide.html)**: Route definitions, wildcards, groups, middlewares, and inspection.
+- **[Core Concepts & Behavior](https://hexdocs.pm/fist/behavior.html)**: Radix Trie structure, RFC 3986 normalization, backtracking, and fail-fast invariants.
+- **[Advanced Patterns](https://hexdocs.pm/fist/advanced.html)**: Context polymorphism, ADT output mapping, and modular router merging.
+- **[Roadmap](https://hexdocs.pm/fist/roadmap.html)**: Upcoming features and architectural exploration.
 
 *(Repository markdown sources are available in the [`docs/`](https://codeberg.org/MrTomate/fist/src/branch/master/docs) directory).*
