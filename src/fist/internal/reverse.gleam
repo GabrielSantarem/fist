@@ -1,16 +1,15 @@
 import fist/internal/types.{
   type Node, type RouteTemplate, type Router, type TemplateSegment,
-  DynamicSegment, RouteTemplate, Router, StaticSegment, WildcardSegment,
-  empty_node,
+  DynamicBranch, DynamicSegment, LastAdded, RouteTemplate, Router, StaticSegment,
+  WildcardSegment, empty_node,
 }
 import gleam/dict.{type Dict}
-import gleam/http.{type Method}
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
-/// Compares two lists of template segments to check if they have identical path structures.
+/// Compares two lists of template segments to check if they have identical path structures and guards.
 pub fn same_segment_shapes(
   a: List(TemplateSegment),
   b: List(TemplateSegment),
@@ -19,9 +18,19 @@ pub fn same_segment_shapes(
     [], [] -> True
     [StaticSegment(sa), ..rest_a], [StaticSegment(sb), ..rest_b] if sa == sb ->
       same_segment_shapes(rest_a, rest_b)
-    [DynamicSegment(pa, _), ..rest_a], [DynamicSegment(pb, _), ..rest_b]
+    [DynamicSegment(pa, ga), ..rest_a], [DynamicSegment(pb, gb), ..rest_b]
       if pa == pb
-    -> same_segment_shapes(rest_a, rest_b)
+    -> {
+      let guards_match = case ga, gb {
+        None, None -> True
+        Some(_), Some(_) -> True
+        _, _ -> False
+      }
+      case guards_match {
+        True -> same_segment_shapes(rest_a, rest_b)
+        False -> False
+      }
+    }
     [WildcardSegment(wa), ..rest_a], [WildcardSegment(wb), ..rest_b]
       if wa == wb
     -> same_segment_shapes(rest_a, rest_b)
@@ -47,10 +56,39 @@ pub fn segments_to_string(segments: List(TemplateSegment)) -> String {
   }
 }
 
-/// Extracts reverse-routable template segments by walking raw path segments alongside the Trie.
+/// Checks if a Trie node or any of its descendants contains a route with the given route ID.
+pub fn node_contains_route_id(
+  node: Node(req, ctx, out),
+  target_id: Int,
+) -> Bool {
+  case node.route {
+    Some(r) if r.id == target_id -> True
+    _ -> {
+      case node.wildcard_child {
+        Some(#(_, r)) if r.id == target_id -> True
+        _ -> {
+          let in_static =
+            dict.values(node.static_children)
+            |> list.any(fn(child) { node_contains_route_id(child, target_id) })
+          case in_static {
+            True -> True
+            False ->
+              list.any(node.dynamic_children, fn(branch) {
+                node_contains_route_id(branch.child, target_id)
+              })
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Extracts reverse-routable template segments by walking raw path segments alongside the Trie,
+/// identifying the exact dynamic branch containing the target route ID.
 pub fn extract_template_segments(
   segments: List(String),
   current_node: Node(req, ctx, out),
+  target_route_id: Int,
 ) -> List(TemplateSegment) {
   case segments {
     [] -> []
@@ -67,16 +105,22 @@ pub fn extract_template_segments(
       let matching_branch =
         list.find(current_node.dynamic_children, fn(branch) {
           branch.param_name == param_name
+          && node_contains_route_id(branch.child, target_route_id)
+        })
+        |> result.lazy_unwrap(fn() {
+          list.find(current_node.dynamic_children, fn(branch) {
+            branch.param_name == param_name
+          })
+          |> result.unwrap(DynamicBranch(param_name, None, empty_node()))
         })
 
-      let #(guard, next_node) = case matching_branch {
-        Ok(branch) -> #(branch.guard, branch.child)
-        Error(Nil) -> #(None, empty_node())
-      }
-
       [
-        DynamicSegment(name: param_name, guard: guard),
-        ..extract_template_segments(rest, next_node)
+        DynamicSegment(name: param_name, guard: matching_branch.guard),
+        ..extract_template_segments(
+          rest,
+          matching_branch.child,
+          target_route_id,
+        )
       ]
     }
 
@@ -85,16 +129,20 @@ pub fn extract_template_segments(
         dict.get(current_node.static_children, segment)
         |> result.unwrap(empty_node())
 
-      [StaticSegment(segment), ..extract_template_segments(rest, next_node)]
+      [
+        StaticSegment(segment),
+        ..extract_template_segments(rest, next_node, target_route_id)
+      ]
     }
   }
 }
 
 /// Assigns a unique name to the last added route in the router.
 ///
-/// If the same name is registered to the exact same path template (e.g. for multiple HTTP methods
-/// sharing a canonical resource URL), the registration is accepted idempotently.
-/// If the name is registered to a conflicting path template, it panics immediately.
+/// If the same name is registered to the exact same path template and guard configuration
+/// (e.g. for multiple HTTP methods sharing a canonical resource URL), the registration is
+/// accepted idempotently.
+/// If the name is registered to a conflicting path template or differing guards, it panics immediately.
 pub fn name_route(
   router: Router(req, ctx, out),
   name: String,
@@ -108,10 +156,11 @@ pub fn name_route(
     None ->
       panic as "Invalid route name: fist.name must be called immediately after registering a route"
 
-    Some(#(method, segments)) -> {
+    Some(LastAdded(route_id, method, segments)) -> {
       let root_node =
         dict.get(router.routes, method) |> result.unwrap(empty_node())
-      let template_segments = extract_template_segments(segments, root_node)
+      let template_segments =
+        extract_template_segments(segments, root_node, route_id)
 
       case dict.get(router.named_routes, name) {
         Ok(existing) -> {
@@ -121,17 +170,14 @@ pub fn name_route(
               panic as string.concat([
                   "Route name collision: route '",
                   name,
-                  "' is already registered to a different path '",
-                  segments_to_string(existing.segments),
-                  "', cannot redefine as '",
-                  segments_to_string(template_segments),
-                  "'",
+                  "' is already registered to a different path or with conflicting guards",
                 ])
           }
         }
         Error(Nil) -> {
           let template =
             RouteTemplate(
+              id: route_id,
               name: name,
               method: method,
               segments: template_segments,
@@ -144,19 +190,15 @@ pub fn name_route(
   }
 }
 
-/// Updates guards in named route templates if `fist.guard` is called after `fist.name`.
+/// Updates guards in named route templates matching the exact route ID if `fist.guard` is called after `fist.name`.
 pub fn update_template_guard(
   named_routes: Dict(String, RouteTemplate),
-  target_method: Method,
-  last_added_segments: List(String),
+  target_route_id: Int,
   target_param: String,
   predicate: fn(String) -> Bool,
 ) -> Dict(String, RouteTemplate) {
   dict.map_values(named_routes, fn(_, template) {
-    case
-      template.method == target_method
-      && matches_segments(template.segments, last_added_segments)
-    {
+    case template.id == target_route_id {
       True -> {
         let updated_segments =
           list.map(template.segments, fn(seg) {
@@ -176,21 +218,6 @@ pub fn update_template_guard(
       False -> template
     }
   })
-}
-
-fn matches_segments(
-  template_segments: List(TemplateSegment),
-  raw_segments: List(String),
-) -> Bool {
-  case template_segments, raw_segments {
-    [], [] -> True
-    [StaticSegment(a), ..rest_t], [b, ..rest_r] if a == b ->
-      matches_segments(rest_t, rest_r)
-    [DynamicSegment(a, _), ..rest_t], [":" <> b, ..rest_r] if a == b ->
-      matches_segments(rest_t, rest_r)
-    [WildcardSegment(a), ..], ["*" <> b, ..] if a == b -> True
-    _, _ -> False
-  }
 }
 
 /// Prefixes a route template with prefix segments.

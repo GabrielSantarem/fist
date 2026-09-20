@@ -7,9 +7,13 @@ import gleam/option.{type Option, None}
 pub type Handler(req_body, ctx, output) =
   fn(Request(req_body), ctx, Dict(String, String)) -> output
 
-/// A route registered in the Trie, storing the handler and optional metadata description.
+/// A route registered in the Trie, storing an internal route ID, the handler, and optional metadata description.
 pub type Route(req_body, ctx, output) {
-  Route(handler: Handler(req_body, ctx, output), description: Option(String))
+  Route(
+    id: Int,
+    handler: Handler(req_body, ctx, output),
+    description: Option(String),
+  )
 }
 
 /// A single dynamic branch in the Radix Trie.
@@ -44,9 +48,14 @@ pub type TemplateSegment {
   WildcardSegment(name: String)
 }
 
-/// A reverse-routable route template.
+/// A reverse-routable route template tracking the specific route ID it was registered for.
 pub type RouteTemplate {
-  RouteTemplate(name: String, method: Method, segments: List(TemplateSegment))
+  RouteTemplate(
+    id: Int,
+    name: String,
+    method: Method,
+    segments: List(TemplateSegment),
+  )
 }
 
 /// A lightweight, self-contained registry of named route templates.
@@ -67,11 +76,17 @@ pub fn path_registry_routes(
   registry.routes
 }
 
+/// Tracks the most recently added route for subsequent `guard`, `describe`, or `name` calls.
+pub type LastAdded {
+  LastAdded(route_id: Int, method: Method, segments: List(String))
+}
+
 /// The internal representation of a Router.
 pub type Router(req_body, ctx, output) {
   Router(
     routes: Dict(Method, Node(req_body, ctx, output)),
-    last_added: Option(#(Method, List(String))),
+    next_route_id: Int,
+    last_added: Option(LastAdded),
     named_routes: Dict(String, RouteTemplate),
   )
 }
@@ -98,5 +113,10 @@ pub fn empty_node() -> Node(req_body, ctx, output) {
 
 /// Helper to create a new, empty Router.
 pub fn new_router() -> Router(req_body, ctx, output) {
-  Router(routes: dict.new(), last_added: None, named_routes: dict.new())
+  Router(
+    routes: dict.new(),
+    next_route_id: 1,
+    last_added: None,
+    named_routes: dict.new(),
+  )
 }
