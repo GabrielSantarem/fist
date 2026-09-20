@@ -351,7 +351,8 @@ fn merge_single_branch(
         True -> {
           let merged_child = merge_nodes(a_branch.child, b_branch.child)
           let guard = case a_branch.guard, b_branch.guard {
-            Some(g), _ -> Some(g)
+            Some(g1), Some(g2) -> Some(fn(s) { g1(s) && g2(s) })
+            Some(g), None -> Some(g)
             None, Some(g) -> Some(g)
             None, None -> None
           }
