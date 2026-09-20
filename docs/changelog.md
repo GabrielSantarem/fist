@@ -1,13 +1,15 @@
 # Changelog
 
 ## v1.7.0
-- **Feat**: Added Wildcard Catch-All routes (`*param` / `/*`) for matching arbitrary multi-segment sub-paths.
+- **Feat**: Added Wildcard Catch-All routes (`*param` / `/*`) for matching arbitrary multi-segment sub-paths with clean relative path extraction.
 - **Feat**: Implemented strict 3-tier specificity matching: `Static > Dynamic (:param) > Wildcard (*param)` with automatic deep backtracking to ancestor wildcards.
 - **Feat**: Added `fist.merge` for monoidal router combination.
-- **Feat**: Implemented Fail-Fast collision detection: immediate runtime panics for duplicate endpoints, conflicting dynamic parameter names, non-terminal wildcards, and sibling wildcard collisions.
-- **Feat**: Added full cross-target compatibility for both BEAM (Erlang) and JavaScript runtimes.
-- **Test**: Expanded test suite to 84 comprehensive specification tests with zero failures across Erlang and JavaScript targets.
-- **Docs**: Standardized test documentation to specification style and updated core concept guides.
+- **Feat**: Implemented Fail-Fast collision detection: immediate runtime panics for duplicate endpoints, conflicting dynamic parameter names, empty dynamic parameter names (`/:`), non-terminal wildcards, and sibling wildcard collisions.
+- **Feat**: Implemented RFC 3986 Section 5.2.4 Defensive Path Security (`remove_dot_segments`), resolving `.` and `..`, preventing directory traversal escapes above root, sanitizing null-bytes, and normalizing Windows backslashes.
+- **Feat**: Added full cross-target compatibility with 100% build and runtime parity across both BEAM (Erlang) and JavaScript (Node.js/Bun/Deno/browser) targets.
+- **Perf**: Added comprehensive scalability benchmarks verifying $O(k)$ lookups on 2,000+ route Tries, 10,000-request burst dispatches, 50-level path nesting, and large-tree merges.
+- **Test**: Expanded test suite to 111 comprehensive automated tests passing with zero failures and zero warnings across Erlang and JavaScript runtimes.
+- **Docs**: Updated User Guide, Behavior Invariants, Advanced Patterns, and Roadmap for v1.7.0.
 
 ## v1.6.0
 - **Fix**: Fixed dynamic segment handling in `mount` and `group` prefixes (e.g. `/orgs/:org_id`).
