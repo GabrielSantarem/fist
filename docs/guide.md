@@ -85,8 +85,8 @@ let router =
 
 ### Precedence & Fallthrough
 In the example above:
-1. A request to `/users/42` evaluates `extract.is_int("42")` $\to$ `True`. Dispatched to `show_user_by_id`.
-2. A request to `/users/john_doe` evaluates `extract.is_int("john_doe")` $\to$ `False`. Fist automatically falls through to the sibling `:username` branch and dispatches to `show_user_by_username`.
+1. A request to `/users/42` evaluates `extract.is_int("42")` → `True`. Dispatched to `show_user_by_id`.
+2. A request to `/users/john_doe` evaluates `extract.is_int("john_doe")` → `False`. Fist automatically falls through to the sibling `:username` branch and dispatches to `show_user_by_username`.
 
 ### Combining Multiple Guards
 Multiple `fist.guard` calls on the same parameter chain with short-circuiting logical `AND`:

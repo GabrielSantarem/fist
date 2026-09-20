@@ -8,7 +8,7 @@ Understanding how Fist processes requests, executes guards, and generates revers
 
 At its core, Fist uses a **Radix Trie** (Prefix Tree) to store and match route patterns:
 
-*   **Algorithmic Efficiency:** Routing lookup time is $O(k)$ relative to the number of segments $k$ in the request path, remaining constant regardless of whether your application registers 10 or 10,000 routes.
+*   **Algorithmic Efficiency:** Routing lookup time is `O(k)` relative to the number of segments `k` in the request path, remaining constant regardless of whether your application registers 10 or 10,000 routes.
 *   **Segment-Based Tree:** Each URL path is tokenized by forward slashes (`/`), where each segment represents a node in the tree.
 *   **Polymorphic Sibling Dynamic Children:** Unlike simplistic radix trees that restrict a node to at most one dynamic parameter child, Fist supports multiple dynamic branches per node, disambiguated by route guards and declared priority order.
 
@@ -19,9 +19,9 @@ At its core, Fist uses a **Radix Trie** (Prefix Tree) to store and match route p
 Before traversing the Trie, Fist sanitizes and canonicalizes incoming paths according to **RFC 3986 Section 5.2.4**:
 
 *   **Dot-Segment Resolution (`remove_dot_segments`):**
-    *   Single dots (`.`) representing the current directory are stripped: `/api/./v1/users` $\to$ `/api/v1/users`.
-    *   Double dots (`..`) representing parent directory traversal are resolved: `/static/css/../js/bundle.js` $\to$ `/static/js/bundle.js`.
-    *   Traversals attempting to escape above root are clamped safely at root: `/../../secret` $\to$ `/secret`.
+    *   Single dots (`.`) representing the current directory are stripped: `/api/./v1/users` → `/api/v1/users`.
+    *   Double dots (`..`) representing parent directory traversal are resolved: `/static/css/../js/bundle.js` → `/static/js/bundle.js`.
+    *   Traversals attempting to escape above root are clamped safely at root: `/../../secret` → `/secret`.
 *   **Encoded Traversal Protection:** Percent-encoded dots (`%2e%2e` and `%2e`) are decoded before path canonicalization, neutralizing Web Application Firewall (WAF) evasion attacks.
 *   **Backslash Canonicalization:** Windows-style backslashes (`\`) are normalized to standard forward slashes (`/`), preventing OS-dependent traversal bypasses.
 *   **Null-Byte Stripping:** Injected null bytes (`\0` and `%00`) are removed to prevent string truncation vulnerabilities in downstream filesystem calls or native C drivers.
@@ -38,7 +38,8 @@ Before traversing the Trie, Fist sanitizes and canonicalizes incoming paths acco
 
 When an incoming URL could theoretically match multiple registered routes, Fist resolves conflicts using a deterministic 4-tier hierarchy:
 
-$$\mathbf{Static} \;\;>\;\; \mathbf{Guarded \; Dynamic} \;\;>\;\; \mathbf{Unguarded \; Dynamic} \;\;>\;\; \mathbf{Wildcard \; (*param)}$$
+> **Precedence Hierarchy:**
+> **`Static`** &nbsp;>&nbsp; **`Guarded Dynamic`** &nbsp;>&nbsp; **`Unguarded Dynamic`** &nbsp;>&nbsp; **`Wildcard (*param)`**
 
 ### Deterministic Sibling Resolution
 When a node contains multiple dynamic children (e.g. `:id` with an integer guard alongside generic `:username`):

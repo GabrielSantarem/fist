@@ -16,7 +16,7 @@
 - **Feat**: Implemented Fail-Fast collision detection: immediate runtime panics for duplicate endpoints, conflicting dynamic parameter names, empty dynamic parameter names (`/:`), non-terminal wildcards, and sibling wildcard collisions.
 - **Feat**: Implemented RFC 3986 Section 5.2.4 Defensive Path Security (`remove_dot_segments`), resolving `.` and `..`, preventing directory traversal escapes above root, sanitizing null-bytes, and normalizing Windows backslashes.
 - **Feat**: Added full cross-target compatibility with 100% build and runtime parity across both BEAM (Erlang) and JavaScript (Node.js/Bun/Deno/browser) targets.
-- **Perf**: Added comprehensive scalability benchmarks verifying $O(k)$ lookups on 2,000+ route Tries, 10,000-request burst dispatches, 50-level path nesting, and large-tree merges.
+- **Perf**: Added comprehensive scalability benchmarks verifying `O(k)` lookups on 2,000+ route Tries, 10,000-request burst dispatches, 50-level path nesting, and large-tree merges.
 - **Test**: Expanded test suite to 111 comprehensive automated tests passing with zero failures and zero warnings across Erlang and JavaScript runtimes.
 - **Docs**: Updated User Guide, Behavior Invariants, Advanced Patterns, and Roadmap for v1.7.0.
 

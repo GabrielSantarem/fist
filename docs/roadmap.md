@@ -42,7 +42,7 @@ Project vision, milestone tracking, and architectural research for `fist`.
 - **Monoidal Router Merging (`fist.merge`)**: Combining disjoint and compatible routers recursively.
 - **Fail-Fast Collision Protection**: Immediate runtime panic on duplicate endpoints, conflicting dynamic parameter names, or conflicting wildcards.
 - **Full Cross-Target Compatibility**: 100% test coverage and build parity on both BEAM (Erlang) and JavaScript (Node.js/Bun/Deno/browser) runtimes.
-- **Scalability & Stress Benchmarks**: Validated $O(k)$ lookups on 2,000+ route trees, 10,000-burst dispatches, and 50-level path nesting.
+- **Scalability & Stress Benchmarks**: Validated `O(k)` lookups on 2,000+ route trees, 10,000-burst dispatches, and 50-level path nesting.
 
 ### v1.6.0
 - **Dynamic Mounting & Groups**: Full support for `:param` in `mount` and `group` prefixes (e.g. `/orgs/:org_id`).

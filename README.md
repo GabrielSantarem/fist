@@ -10,7 +10,7 @@ A declarative, type-safe, tree-based HTTP router for Gleam.
 
 - **Declarative & Chainable API**: `fist.get("/", to: handler)`
 - **Full HTTP Method Support**: `get`, `post`, `put`, `delete`, `patch`, `head`, `options`, and custom methods via `route`
-- **Trie-Based Routing (Radix Tree)**: $O(k)$ path lookups with strict 4-tier precedence (`Static > Guarded Dynamic > Unguarded Dynamic > Wildcard`) and deep automatic backtracking
+- **Trie-Based Routing (Radix Tree)**: `O(k)` path lookups with strict 4-tier precedence (`Static > Guarded Dynamic > Unguarded Dynamic > Wildcard`) and deep automatic backtracking
 - **Route Guards & Dynamic Fallthrough**: Validate path parameters at the Trie level with `fist.guard(when: ...)` and fall through seamlessly to sibling branches
 - **Named Routes & Reverse Routing**: Attach identifiers with `fist.name` and generate canonical URLs with `fist.path` and `fist.path_from`
 - **Bidirectional Soundness**: Reverse routing validates route guards during URL generation, preventing broken redirects and invalid links

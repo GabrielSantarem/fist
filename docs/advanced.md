@@ -84,7 +84,7 @@ pub fn root_router() {
 
 `fist` uses **Static Wrapping**. When you call `fist.wrap` or `fist.group(..., with: [mw1, mw2])`, the middleware functions wrap the handlers in the Trie at definition time.
 
-- **Zero Lookup Overhead**: Routing lookups remain $O(n)$ without inspecting middleware lists during tree traversal.
+- **Zero Lookup Overhead**: Routing lookups remain `O(n)` without inspecting middleware lists during tree traversal.
 - **Execution Order**: In `group(at: "...", with: [mw1, mw2])`, `mw1` is the outermost wrapper and executes first, followed by `mw2`, and finally the handler.
 
 ---
