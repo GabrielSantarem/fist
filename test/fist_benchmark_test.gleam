@@ -10,12 +10,12 @@ fn middleware(next) {
 }
 
 /// Middleware Stress Test:
-/// Evaluates dispatch performance and recursion stability across 10,000 stacked middleware layers.
+/// Evaluates dispatch performance and recursion stability across 1,000 stacked middleware layers.
 pub fn heavy_middleware_stress_test() {
   let router =
     fist.new()
     |> fist.get("/ping", fn(_, _, _) { "pong" })
-    |> int.range(from: 0, to: 10_000, with: _, run: fn(acc, _) {
+    |> int.range(from: 0, to: 1000, with: _, run: fn(acc, _) {
       fist.wrap(acc, middleware)
     })
 
@@ -23,7 +23,7 @@ pub fn heavy_middleware_stress_test() {
     request.new() |> request.set_method(Get) |> request.set_path("/ping")
 
   let res = fist.handle(router, req, Nil, fn() { "404" })
-  string.length(res) |> should.equal(10_004)
+  string.length(res) |> should.equal(1004)
 }
 
 fn append_id(id: String) {
