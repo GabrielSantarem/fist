@@ -84,3 +84,66 @@ pub fn complex_tree_inspection_test() {
   comments_route.description |> should.equal("Comments")
   comments_route.params |> should.equal(["postId"])
 }
+
+// Testa inspeção de rotas montadas (sub-router com prefixo e describe)
+pub fn inspect_mounted_router_metadata_test() {
+  let sub =
+    fist.new()
+    |> fist.get("/items", to: fn(_, _, _) { "items" })
+    |> fist.describe("List sub items")
+    |> fist.get("/items/:item_id", to: fn(_, _, _) { "item" })
+    |> fist.describe("Get sub item")
+
+  let parent =
+    fist.new()
+    |> fist.mount("/api/v1", sub, fn(c) { c })
+
+  let routes = fist.inspect(parent)
+  list.length(routes) |> should.equal(2)
+
+  let assert Ok(items_route) =
+    list.find(routes, fn(r) { r.path == "/api/v1/items" })
+  items_route.description |> should.equal("List sub items")
+  items_route.params |> should.equal([])
+
+  let assert Ok(item_route) =
+    list.find(routes, fn(r) { r.path == "/api/v1/items/:item_id" })
+  item_route.description |> should.equal("Get sub item")
+  item_route.params |> should.equal(["item_id"])
+}
+
+// Testa inspeção de rota raiz ("/")
+pub fn inspect_root_route_metadata_test() {
+  let router =
+    fist.new()
+    |> fist.get("/", to: fn(_, _, _) { "root" })
+    |> fist.describe("Root endpoint")
+
+  let routes = fist.inspect(router)
+  let assert Ok(root_route) = list.first(routes)
+  root_route.path |> should.equal("/")
+  root_route.description |> should.equal("Root endpoint")
+  root_route.params |> should.equal([])
+}
+
+// Testa descrição em rotas irmãs que compartilham segmento dinâmico
+pub fn describe_multiple_dynamic_routes_test() {
+  let h = fn(_, _, _) { "" }
+  let router =
+    fist.new()
+    |> fist.get("/users/:id/profile", to: h)
+    |> fist.describe("User Profile")
+    |> fist.get("/users/:id/settings", to: h)
+    |> fist.describe("User Settings")
+
+  let routes = fist.inspect(router)
+  list.length(routes) |> should.equal(2)
+
+  let assert Ok(profile) =
+    list.find(routes, fn(r) { r.path == "/users/:id/profile" })
+  profile.description |> should.equal("User Profile")
+
+  let assert Ok(settings) =
+    list.find(routes, fn(r) { r.path == "/users/:id/settings" })
+  settings.description |> should.equal("User Settings")
+}
