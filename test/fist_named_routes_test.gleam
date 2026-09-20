@@ -426,6 +426,34 @@ pub fn empty_wildcard_parameter_value_rejected_test() {
   )
 }
 
+/// Wildcard Parameter Traversal Rejected:
+/// Supplying dot segments (".." or ".") in wildcard parameter values returns InvalidParameter
+/// preventing reverse path traversal attacks.
+pub fn wildcard_parameter_traversal_rejected_test() {
+  let router =
+    fist.new()
+    |> fist.get("/assets/*path", fn(_, _, _) { "asset" })
+    |> fist.name("asset")
+
+  fist.path(router, for: "asset", with: [#("path", "../../secret.pem")])
+  |> should.equal(
+    Error(InvalidParameter(
+      route: "asset",
+      param: "path",
+      value: "../../secret.pem",
+    )),
+  )
+
+  fist.path(router, for: "asset", with: [#("path", "images/../secrets/key")])
+  |> should.equal(
+    Error(InvalidParameter(
+      route: "asset",
+      param: "path",
+      value: "images/../secrets/key",
+    )),
+  )
+}
+
 /// Path Injection Defense:
 /// Slashes inside dynamic parameters are percent-encoded to prevent path structure corruption.
 pub fn path_injection_attempt_encoded_safely_test() {

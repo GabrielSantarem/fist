@@ -12,7 +12,8 @@ import gleam/option.{None, Some}
 import gleam/string
 import gleam/uri
 
-// --- TYPES ---\n
+// --- TYPES ---
+
 /// Represents the router instance.
 /// Holds the Radix Trie structure for efficient route matching.
 pub opaque type Router(req_body, ctx, output) {
@@ -415,14 +416,28 @@ fn do_render_path(
                 value: val,
               ))
             parts -> {
-              let encoded = encode_wildcard_parts(parts)
-              do_render_path(
-                rest,
-                all_params,
-                route_name,
-                [encoded, ..path_acc],
-                [param_name, ..used_param_names],
-              )
+              let has_traversal =
+                list.any(parts, fn(p) {
+                  p == "." || p == ".." || string.contains(p, "..")
+                })
+              case has_traversal {
+                True ->
+                  Error(InvalidParameter(
+                    route: route_name,
+                    param: param_name,
+                    value: val,
+                  ))
+                False -> {
+                  let encoded = encode_wildcard_parts(parts)
+                  do_render_path(
+                    rest,
+                    all_params,
+                    route_name,
+                    [encoded, ..path_acc],
+                    [param_name, ..used_param_names],
+                  )
+                }
+              }
             }
           }
         }
