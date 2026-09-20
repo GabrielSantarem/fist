@@ -402,15 +402,18 @@ fn do_render_path(
         Error(Nil) ->
           Error(MissingParameter(route: route_name, missing: param_name))
         Ok(val) -> {
-          case val == "" {
-            True ->
+          let trimmed_parts =
+            string.split(val, "/")
+            |> list.filter(fn(s) { s != "" })
+          case trimmed_parts {
+            [] ->
               Error(InvalidParameter(
                 route: route_name,
                 param: param_name,
-                value: "",
+                value: val,
               ))
-            False -> {
-              let encoded = encode_wildcard_path(val)
+            parts -> {
+              let encoded = encode_wildcard_parts(parts)
               do_render_path(
                 rest,
                 all_params,
@@ -426,8 +429,8 @@ fn do_render_path(
   }
 }
 
-fn encode_wildcard_path(val: String) -> String {
-  string.split(val, "/")
+fn encode_wildcard_parts(parts: List(String)) -> String {
+  parts
   |> list.map(uri.percent_encode)
   |> string.join("/")
 }

@@ -134,6 +134,24 @@ pub fn uuid(
   }
 }
 
+/// Extracts an ASCII alphanumeric string parameter from a dictionary.
+/// Returns `Error(NotFound(key))` if missing, or `Error(InvalidFormat(key, val, "alphanumeric"))`
+/// if it contains non-alphanumeric characters or is empty.
+pub fn alphanumeric(
+  from params: Dict(String, String),
+  key key: String,
+) -> Result(String, ExtractError) {
+  case string(params, key) {
+    Ok(val) -> {
+      case is_alphanumeric(val) {
+        True -> Ok(val)
+        False -> Error(InvalidFormat(key, val, "alphanumeric"))
+      }
+    }
+    Error(err) -> Error(err)
+  }
+}
+
 /// Extracts a parameter and applies a custom parser function.
 pub fn custom(
   from params: Dict(String, String),
@@ -484,5 +502,83 @@ pub fn is_non_empty(val: String) -> Bool {
   case string.trim(val) {
     "" -> False
     _ -> True
+  }
+}
+
+/// Pure guard predicate: returns `True` if the string segment is a boolean literal ("true", "false", "1", "0").
+pub fn is_bool(val: String) -> Bool {
+  case string.lowercase(val) {
+    "true" | "false" | "1" | "0" | "yes" | "no" | "t" | "f" -> True
+    _ -> False
+  }
+}
+
+/// Pure guard predicate: returns `True` if the string segment contains only ASCII alphanumeric characters (`a-z`, `A-Z`, `0-9`).
+pub fn is_alphanumeric(val: String) -> Bool {
+  case val {
+    "" -> False
+    _ -> {
+      string.to_graphemes(val)
+      |> list.all(is_alphanumeric_char)
+    }
+  }
+}
+
+fn is_alphanumeric_char(char: String) -> Bool {
+  case char {
+    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" -> True
+    "a"
+    | "b"
+    | "c"
+    | "d"
+    | "e"
+    | "f"
+    | "g"
+    | "h"
+    | "i"
+    | "j"
+    | "k"
+    | "l"
+    | "m"
+    | "n"
+    | "o"
+    | "p"
+    | "q"
+    | "r"
+    | "s"
+    | "t"
+    | "u"
+    | "v"
+    | "w"
+    | "x"
+    | "y"
+    | "z" -> True
+    "A"
+    | "B"
+    | "C"
+    | "D"
+    | "E"
+    | "F"
+    | "G"
+    | "H"
+    | "I"
+    | "J"
+    | "K"
+    | "L"
+    | "M"
+    | "N"
+    | "O"
+    | "P"
+    | "Q"
+    | "R"
+    | "S"
+    | "T"
+    | "U"
+    | "V"
+    | "W"
+    | "X"
+    | "Y"
+    | "Z" -> True
+    _ -> False
   }
 }

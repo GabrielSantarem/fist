@@ -12,6 +12,94 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
+fn is_node_empty(node: Node(req, ctx, out)) -> Bool {
+  node.route == None
+  && dict.is_empty(node.static_children)
+  && list.is_empty(node.dynamic_children)
+  && node.wildcard_child == None
+}
+
+fn filter_node_path(
+  node: Node(req, ctx, out),
+  segments: List(String),
+) -> Node(req, ctx, out) {
+  case segments {
+    [] -> Node(..empty_node(), route: node.route)
+    ["*" <> _, ..] -> Node(..empty_node(), wildcard_child: node.wildcard_child)
+    [":" <> param_name, ..rest] -> {
+      let filtered_branches =
+        list.filter_map(node.dynamic_children, fn(branch) {
+          case branch.param_name == param_name {
+            True -> {
+              let child = filter_node_path(branch.child, rest)
+              case is_node_empty(child) {
+                True -> Error(Nil)
+                False -> Ok(DynamicBranch(..branch, child: child))
+              }
+            }
+            False -> Error(Nil)
+          }
+        })
+      Node(..empty_node(), dynamic_children: filtered_branches)
+    }
+    [segment, ..rest] -> {
+      case dict.get(node.static_children, segment) {
+        Ok(child) -> {
+          let filtered = filter_node_path(child, rest)
+          case is_node_empty(filtered) {
+            True -> empty_node()
+            False ->
+              Node(
+                ..empty_node(),
+                static_children: dict.insert(dict.new(), segment, filtered),
+              )
+          }
+        }
+        Error(_) -> empty_node()
+      }
+    }
+  }
+}
+
+fn remove_node_path(
+  node: Node(req, ctx, out),
+  segments: List(String),
+) -> Node(req, ctx, out) {
+  case segments {
+    [] -> Node(..node, route: None)
+    ["*" <> _, ..] -> Node(..node, wildcard_child: None)
+    [":" <> param_name, ..rest] -> {
+      let updated_branches =
+        list.filter_map(node.dynamic_children, fn(branch) {
+          case branch.param_name == param_name {
+            True -> {
+              let child = remove_node_path(branch.child, rest)
+              case is_node_empty(child) {
+                True -> Error(Nil)
+                False -> Ok(DynamicBranch(..branch, child: child))
+              }
+            }
+            False -> Ok(branch)
+          }
+        })
+      Node(..node, dynamic_children: updated_branches)
+    }
+    [segment, ..rest] -> {
+      case dict.get(node.static_children, segment) {
+        Ok(child) -> {
+          let updated_child = remove_node_path(child, rest)
+          let new_static = case is_node_empty(updated_child) {
+            True -> dict.delete(node.static_children, segment)
+            False -> dict.insert(node.static_children, segment, updated_child)
+          }
+          Node(..node, static_children: new_static)
+        }
+        Error(_) -> node
+      }
+    }
+  }
+}
+
 fn update_or_append_dynamic(
   branches: List(DynamicBranch(req_body, ctx, output)),
   param_name: String,
@@ -24,7 +112,7 @@ fn update_or_append_dynamic(
       [DynamicBranch(param_name: param_name, guard: None, child: child)]
     }
     [branch, ..rest_branches] -> {
-      case branch.param_name == param_name {
+      case branch.param_name == param_name && branch.guard == None {
         True -> {
           let updated_child = insert_route(branch.child, rest, handler)
           [DynamicBranch(..branch, child: updated_child), ..rest_branches]
@@ -204,16 +292,48 @@ pub fn update_guard(
       case param_name == target_param {
         True -> {
           let updated_children =
-            list.map(node.dynamic_children, fn(branch) {
+            list.flat_map(node.dynamic_children, fn(branch) {
               case branch.param_name == target_param {
                 True -> {
-                  let new_guard = case branch.guard {
-                    Some(prev) -> fn(s) { prev(s) && predicate(s) }
-                    None -> predicate
+                  let kept_child = filter_node_path(branch.child, rest)
+                  let other_child = remove_node_path(branch.child, rest)
+                  case is_node_empty(other_child) {
+                    True -> {
+                      let new_guard = case branch.guard {
+                        Some(prev) -> fn(s) { prev(s) && predicate(s) }
+                        None -> predicate
+                      }
+                      let updated_child =
+                        update_guard(
+                          branch.child,
+                          rest,
+                          target_param,
+                          predicate,
+                        )
+                      [
+                        DynamicBranch(
+                          ..branch,
+                          guard: Some(new_guard),
+                          child: updated_child,
+                        ),
+                      ]
+                    }
+                    False -> {
+                      let guarded_child =
+                        update_guard(kept_child, rest, target_param, predicate)
+                      let guarded_branch =
+                        DynamicBranch(
+                          param_name: branch.param_name,
+                          guard: Some(predicate),
+                          child: guarded_child,
+                        )
+                      let original_branch =
+                        DynamicBranch(..branch, child: other_child)
+                      [guarded_branch, original_branch]
+                    }
                   }
-                  DynamicBranch(..branch, guard: Some(new_guard))
                 }
-                False -> branch
+                False -> [branch]
               }
             })
             |> sort_dynamic_branches
@@ -679,6 +799,16 @@ pub fn mount(
 ) -> Router(req, ctx_a, out) {
   let sub_router = map_context(sub_router, mapper)
   let prefix_segments = path.parse_path(prefix)
+
+  case list.find(prefix_segments, string.starts_with(_, "*")) {
+    Ok("*" <> param_name) ->
+      panic as string.concat([
+          "Invalid prefix: wildcard *",
+          param_name,
+          " cannot be used in a route prefix",
+        ])
+    _ -> Nil
+  }
 
   let mounted_router =
     dict.to_list(sub_router.routes)

@@ -17,8 +17,16 @@ pub fn parse_path(path: String) -> List(String) {
     Error(Nil) -> clean_path
   }
 
-  // Normalize Windows backslashes to standard forward slashes
-  let clean_path = string.replace(clean_path, "\\", "/")
+  // Canonicalize path separators and percent-encoded separators/dots to neutralize WAF evasion
+  let clean_path =
+    clean_path
+    |> string.replace("\\", "/")
+    |> string.replace("%5c", "/")
+    |> string.replace("%5C", "/")
+    |> string.replace("%2f", "/")
+    |> string.replace("%2F", "/")
+    |> string.replace("%2e", ".")
+    |> string.replace("%2E", ".")
 
   clean_path
   |> string.split("/")
