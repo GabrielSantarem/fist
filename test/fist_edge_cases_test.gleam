@@ -20,6 +20,8 @@ fn middleware_b(next) {
   fn(req, ctx, params) { next(req, ctx, params) <> "B" }
 }
 
+/// Hierarchical Middleware Scoping:
+/// Middlewares wrap handlers in the Trie at wrap-time. Routes registered after wrap remain unwrapped.
 pub fn hierarchical_middleware_test() {
   let admin_router =
     fist.new()
@@ -31,7 +33,7 @@ pub fn hierarchical_middleware_test() {
     |> fist.mount("/admin", admin_router, fn(c) { c })
     |> fist.wrap(middleware_a)
 
-  // 1. Rota admin deve ter A e B
+  // 1. Mounted route inherits both inner (B) and outer (A) middlewares
   let req1 =
     request.new()
     |> request.set_method(Get)
@@ -39,7 +41,7 @@ pub fn hierarchical_middleware_test() {
   fist.handle(router, req1, Nil, fn() { "404" })
   |> should.equal("dashboardBA")
 
-  // 2. Adicionando rota DEPOIS do wrap
+  // 2. Route registered after wrap is not enveloped
   let root_router =
     router
     |> fist.get("/home", fn(_, _, _) { "home" })
@@ -50,7 +52,8 @@ pub fn hierarchical_middleware_test() {
   |> should.equal("home")
 }
 
-// 1. Decodificação de URL percent-encoding em parâmetros dinâmicos
+/// Percent-Encoded Dynamic Parameters:
+/// Dynamic path segments decode percent-encoded tokens (%20, UTF-8, %2B) into plain text.
 pub fn url_percent_encoded_params_test() {
   let router =
     fist.new()
@@ -61,7 +64,7 @@ pub fn url_percent_encoded_params_test() {
       dict.get(params, "name") |> should.be_ok
     })
 
-  // Espaço codificado como %20
+  // Space encoded as %20
   let req_space =
     request.new()
     |> request.set_method(Get)
@@ -69,7 +72,7 @@ pub fn url_percent_encoded_params_test() {
   fist.handle(router, req_space, Nil, fn() { "404" })
   |> should.equal("gleam lang")
 
-  // Caracteres UTF-8 codificados (ex: João -> Jo%C3%A3o)
+  // Multi-byte UTF-8 encoded characters (e.g. João -> Jo%C3%A3o)
   let req_utf8 =
     request.new()
     |> request.set_method(Get)
@@ -77,7 +80,7 @@ pub fn url_percent_encoded_params_test() {
   fist.handle(router, req_utf8, Nil, fn() { "404" })
   |> should.equal("João")
 
-  // Sinal de mais codificado como %2B (ex: c++ -> c%2B%2B)
+  // Plus sign encoded as %2B (e.g. c++ -> c%2B%2B)
   let req_plus =
     request.new()
     |> request.set_method(Get)
@@ -86,13 +89,14 @@ pub fn url_percent_encoded_params_test() {
   |> should.equal("c++")
 }
 
-// 2. Caminhos estáticos com caracteres codificados / UTF-8
+/// Percent-Encoded Static Path Matching:
+/// Static path segments containing percent-encoding match their decoded literal definitions.
 pub fn url_percent_encoded_static_path_test() {
   let router =
     fist.new()
     |> fist.get("/café", fn(_, _, _) { "cafe ok" })
 
-  // Requisição enviada com percent-encoding para o caractere 'é' (%C3%A9)
+  // Request sent with percent-encoded 'é' (%C3%A9)
   let req =
     request.new()
     |> request.set_method(Get)
@@ -102,7 +106,8 @@ pub fn url_percent_encoded_static_path_test() {
   |> should.equal("cafe ok")
 }
 
-// 3. Limpeza defensiva de Query Strings e Fragments no caminho da requisição
+/// Query String & URL Fragment Stripping:
+/// Query parameters (?) and fragments (#) are pruned from request paths during route matching.
 pub fn query_string_and_fragment_in_path_test() {
   let router =
     fist.new()
@@ -112,7 +117,7 @@ pub fn query_string_and_fragment_in_path_test() {
       "user " <> id
     })
 
-  // Requisição com query string no path: /users?page=2&limit=50
+  // Static route with query parameters: /users?page=2&limit=50
   let req_query =
     request.new()
     |> request.set_method(Get)
@@ -120,7 +125,7 @@ pub fn query_string_and_fragment_in_path_test() {
   fist.handle(router, req_query, Nil, fn() { "404" })
   |> should.equal("users list")
 
-  // Requisição com fragment no path: /users#top
+  // Static route with fragment: /users#top
   let req_fragment =
     request.new()
     |> request.set_method(Get)
@@ -128,7 +133,7 @@ pub fn query_string_and_fragment_in_path_test() {
   fist.handle(router, req_fragment, Nil, fn() { "404" })
   |> should.equal("users list")
 
-  // Rota dinâmica com query string
+  // Dynamic route with query parameters: /users/42?active=true
   let req_dynamic_query =
     request.new()
     |> request.set_method(Get)
@@ -137,7 +142,8 @@ pub fn query_string_and_fragment_in_path_test() {
   |> should.equal("user 42")
 }
 
-// 4. Backtracking profundo: rota estática parcial falha e faz fallback para ramo dinâmico
+/// Deep Trie Backtracking:
+/// When a partial static match fails deeper down, matching backtracks to check sibling dynamic branches.
 pub fn deep_backtracking_test() {
   let router =
     fist.new()
@@ -147,9 +153,8 @@ pub fn deep_backtracking_test() {
       "project " <> pid <> " members"
     })
 
-  // "settings" bate com o primeiro segmento estático de /projects/settings/general,
-  // mas o segundo segmento "members" não bate com "general".
-  // O roteador deve fazer backtracking e casar com /projects/:project_id/members!
+  // "settings" matches the first static segment of /projects/settings/general,
+  // but "members" fails on "general". The engine backtracks to :project_id/members.
   let req =
     request.new()
     |> request.set_method(Get)
@@ -159,7 +164,8 @@ pub fn deep_backtracking_test() {
   |> should.equal("project settings members")
 }
 
-// 5. Rota dinâmica definida ANTES de rota estática (rota estática deve prevalecer)
+/// Static vs Dynamic Precedence:
+/// Exact static routes take priority over wildcard segments regardless of registration order.
 pub fn dynamic_defined_before_static_test() {
   let router =
     fist.new()
@@ -182,7 +188,8 @@ pub fn dynamic_defined_before_static_test() {
   |> should.equal("dynamic 123")
 }
 
-// 6. Múltiplos parâmetros dinâmicos consecutivos (ex: /:lang/:region/:topic)
+/// Consecutive Dynamic Segments:
+/// Adjoining wildcards (/:lang/:region/:topic) are cleanly partitioned and bound.
 pub fn multiple_consecutive_dynamic_segments_test() {
   let router =
     fist.new()
@@ -202,7 +209,8 @@ pub fn multiple_consecutive_dynamic_segments_test() {
   |> should.equal("pt/br/gleam")
 }
 
-// 7. Parâmetro dinâmico na raiz (ex: /:slug) coexistindo com a rota raiz ("/")
+/// Root Wildcard Segment Coexistence:
+/// Root dynamic segments (/:slug) cohabit safely alongside the root route ("/").
 pub fn root_level_dynamic_route_test() {
   let router =
     fist.new()
@@ -223,7 +231,8 @@ pub fn root_level_dynamic_route_test() {
   |> should.equal("page about")
 }
 
-// 8. Sobrescrita de rota (Route Overriding): registrar o mesmo método e path substitui o handler
+/// Route Overwrite Invariant:
+/// Registering the identical HTTP method and path replaces the existing handler.
 pub fn route_overwriting_test() {
   let router =
     fist.new()
@@ -237,7 +246,8 @@ pub fn route_overwriting_test() {
   |> should.equal("version 2")
 }
 
-// 9. Valores com caracteres especiais em parâmetros dinâmicos (e-mails, UUIDs, pontos)
+/// Non-Alphanumeric Parameter Tokens:
+/// Parameter segments capture non-standard values like emails, file extensions, and UUIDs.
 pub fn special_characters_in_parameter_values_test() {
   let router =
     fist.new()
@@ -254,7 +264,7 @@ pub fn special_characters_in_parameter_values_test() {
       "uuid:" <> uuid
     })
 
-  // E-mail com @ e +
+  // Email with @ and +
   let req_email =
     request.new()
     |> request.set_method(Get)
@@ -262,7 +272,7 @@ pub fn special_characters_in_parameter_values_test() {
   fist.handle(router, req_email, Nil, fn() { "404" })
   |> should.equal("email:user+tag@domain.co.uk")
 
-  // Arquivo com extensão (.min.js)
+  // Filename with multiple dots
   let req_file =
     request.new()
     |> request.set_method(Get)
@@ -270,7 +280,7 @@ pub fn special_characters_in_parameter_values_test() {
   fist.handle(router, req_file, Nil, fn() { "404" })
   |> should.equal("file:bundle.min.js")
 
-  // UUID
+  // Standard UUID format
   let req_uuid =
     request.new()
     |> request.set_method(Get)
@@ -279,7 +289,8 @@ pub fn special_characters_in_parameter_values_test() {
   |> should.equal("uuid:550e8400-e29b-41d4-a716-446655440000")
 }
 
-// 10. Novos helpers HTTP: head e options
+/// Extended HTTP Method Helpers:
+/// fist.head and fist.options correctly bind routes to Head and Options methods.
 pub fn head_and_options_helpers_test() {
   let router =
     fist.new()
@@ -297,7 +308,8 @@ pub fn head_and_options_helpers_test() {
   |> should.equal("options-ok")
 }
 
-// 11. allowed_methods para suporte a 405 Method Not Allowed e CORS
+/// Allowed Methods Calculation:
+/// fist.allowed_methods returns all registered methods matching a specific path.
 pub fn allowed_methods_test() {
   let router =
     fist.new()
@@ -320,7 +332,8 @@ pub fn allowed_methods_test() {
   methods_unknown |> should.equal([])
 }
 
-// 12. Método HTTP Customizado com fist.route (ex: WebDAV / HTTP PURGE)
+/// Custom HTTP Verbs:
+/// fist.route supports arbitrary custom HTTP methods (e.g., WebDAV, PURGE).
 pub fn custom_http_method_test() {
   let router =
     fist.new()
@@ -339,7 +352,8 @@ pub fn custom_http_method_test() {
   |> should.equal("purged")
 }
 
-// 13. Teste end-to-end do padrão CORS Preflight (OPTIONS) e 405 Method Not Allowed
+/// End-to-End CORS Preflight & 405 Method Not Allowed Workflow:
+/// Integrates allowed_methods to answer OPTIONS preflight (204) and reject unsupported methods (405).
 pub fn cors_preflight_and_405_dispatch_test() {
   let router =
     fist.new()
@@ -387,7 +401,7 @@ pub fn cors_preflight_and_405_dispatch_test() {
     }
   }
 
-  // A. OPTIONS preflight em rota existente deve retornar 204 com access-control-allow-methods
+  // A. OPTIONS preflight on existing route returns 204 with allow-methods
   let req_options =
     request.new()
     |> request.set_method(Options)
@@ -399,7 +413,7 @@ pub fn cors_preflight_and_405_dispatch_test() {
   string.contains(cors_hdr, "Get") |> should.be_true
   string.contains(cors_hdr, "Post") |> should.be_true
 
-  // B. Método não cadastrado na rota existente (PUT) deve retornar 405 com header allow
+  // B. Unregistered method on existing route (PUT) returns 405 with allow header
   let req_put =
     request.new() |> request.set_method(Put) |> request.set_path("/api/users")
   let res_put = dispatch(req_put)
@@ -409,21 +423,21 @@ pub fn cors_preflight_and_405_dispatch_test() {
   string.contains(allow_hdr, "Get") |> should.be_true
   string.contains(allow_hdr, "Post") |> should.be_true
 
-  // C. Método GET normal em rota existente funciona normalmente (200)
+  // C. Registered method GET functions normally (200)
   let req_get =
     request.new() |> request.set_method(Get) |> request.set_path("/api/users")
   let res_get = dispatch(req_get)
   res_get.status |> should.equal(200)
   res_get.body |> should.equal("users list")
 
-  // D. Rota que não existe para nenhum método retorna 404
+  // D. Unregistered path returns 404
   let req_404 =
     request.new() |> request.set_method(Get) |> request.set_path("/api/unknown")
   let res_404 = dispatch(req_404)
   res_404.status |> should.equal(404)
   res_404.body |> should.equal("Not Found")
 
-  // E. OPTIONS em rota inexistente retorna 404
+  // E. OPTIONS preflight on unregistered path returns 404
   let req_options_404 =
     request.new()
     |> request.set_method(Options)

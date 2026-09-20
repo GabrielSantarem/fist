@@ -6,7 +6,6 @@ import gleam/int
 import gleam/list
 import gleeunit/should
 
-// Tipos para testar o polimorfismo de contexto
 pub type RootContext {
   RootContext(id: Int)
 }
@@ -27,6 +26,8 @@ fn sub_handler(_req, ctx: SubContext, _params) {
   "sub-" <> ctx.name
 }
 
+/// Sub-Router Mounting & Context Transformation:
+/// Mounted routers inherit path prefixes and adapt context requirements using a mapper function.
 pub fn mount_test() {
   let sub_router =
     fist.new()
@@ -39,20 +40,21 @@ pub fn mount_test() {
       SubContext(name: "transformed-" <> int.to_string(ctx.id))
     })
 
-  // 1. Testa rota do root
+  // 1. Root route dispatch
   let req1 =
     request.new() |> request.set_method(Get) |> request.set_path("/status")
   fist.handle(root_router, req1, RootContext(id: 1), fn() { "404" })
   |> should.equal("root-1")
 
-  // 2. Testa rota montada com contexto transformado
+  // 2. Mounted sub-route dispatch with adapted context
   let req2 =
     request.new() |> request.set_method(Get) |> request.set_path("/api/hello")
   fist.handle(root_router, req2, RootContext(id: 1), fn() { "404" })
   |> should.equal("sub-transformed-1")
 }
 
-// Testa montagem de sub-router com prefixo dinâmico (:org_id)
+/// Dynamic Prefix Mounting:
+/// Wildcards embedded within mount prefixes (e.g., /orgs/:org_id) are extracted alongside sub-route params.
 pub fn dynamic_prefix_mount_test() {
   let sub_router =
     fist.new()
@@ -74,14 +76,15 @@ pub fn dynamic_prefix_mount_test() {
   fist.handle(root_router, req, Nil, fn() { "404" })
   |> should.equal("acme:alice")
 
-  // Verifica inspeção de rota com prefixo dinâmico
+  // Route inspection reflects prefixed path and cumulative parameter names
   let routes = fist.inspect(root_router)
   let assert Ok(route_info) = list.first(routes)
   route_info.path |> should.equal("/orgs/:org_id/members/:member_id")
   route_info.params |> should.equal(["org_id", "member_id"])
 }
 
-// Testa uso básico do fist.group
+/// Basic Route Grouping:
+/// Groups bundle routes under a common path prefix without requiring intermediate context mappers.
 pub fn group_basic_test() {
   let router =
     fist.new()
@@ -103,8 +106,8 @@ pub fn group_basic_test() {
   |> should.equal("created_v1")
 }
 
-// Testa que a ordem de execução dos middlewares em fist.group segue a ordem declarativa:
-// O primeiro middleware da lista roda primeiro (lado externo da cebola).
+/// Onion Middleware Execution Order:
+/// Middlewares execute in declaration order: the first declared middleware wraps subsequent ones (outermost first).
 pub fn group_middleware_execution_order_test() {
   let middleware_first = fn(next) {
     fn(req, ctx, params) {
@@ -131,15 +134,13 @@ pub fn group_middleware_execution_order_test() {
   let req =
     request.new() |> request.set_method(Get) |> request.set_path("/api/data")
 
-  // middleware_first envolve middleware_second, que envolve o handler:
-  // handler -> "content"
-  // second  -> "second(content)"
-  // first   -> "first(second(content))"
+  // Evaluated: first(second(handler()))
   fist.handle(router, req, Nil, fn() { "404" })
   |> should.equal("first(second(content))")
 }
 
-// Testa grupos aninhados com middlewares e prefixos combinados
+/// Hierarchical Group Nesting:
+/// Nested groups accumulate path prefixes and cascade middleware stacks from outside in.
 pub fn nested_groups_test() {
   let mw_outer = fn(next) {
     fn(req, ctx, params) { next(req, ctx, params) <> "-outer" }
@@ -164,7 +165,8 @@ pub fn nested_groups_test() {
   |> should.equal("pong-inner-outer")
 }
 
-// Testa fist.group com parâmetros dinâmicos no prefixo
+/// Dynamic Segment in Group Prefix:
+/// Groups support dynamic wildcards in their prefix definition.
 pub fn group_with_dynamic_prefix_test() {
   let router =
     fist.new()
@@ -196,7 +198,8 @@ pub fn group_with_dynamic_prefix_test() {
   |> should.equal("42 post 99")
 }
 
-// Testa montagem de sub-roteador que contém rota raiz "/"
+/// Sub-Router Root Route Propagation:
+/// A sub-router's root route ("/") correctly maps to the mount point prefix (e.g., "/admin").
 pub fn subrouter_with_root_route_mounted_test() {
   let sub =
     fist.new()
@@ -208,32 +211,33 @@ pub fn subrouter_with_root_route_mounted_test() {
     |> fist.get("/", fn(_, _, _) { "main root" })
     |> fist.mount("/admin", sub, fn(c) { c })
 
-  // Rota raiz do sub-roteador vira "/admin" no roteador pai
+  // Mounted sub-router root route maps to "/admin"
   let req_admin =
     request.new() |> request.set_method(Get) |> request.set_path("/admin")
   fist.handle(router, req_admin, Nil, fn() { "404" })
   |> should.equal("sub root")
 
-  // Com trailing slash "/admin/"
+  // Trailing slash variant "/admin/"
   let req_admin_slash =
     request.new() |> request.set_method(Get) |> request.set_path("/admin/")
   fist.handle(router, req_admin_slash, Nil, fn() { "404" })
   |> should.equal("sub root")
 
-  // Sub item "/admin/items"
+  // Sub-router child route "/admin/items"
   let req_items =
     request.new() |> request.set_method(Get) |> request.set_path("/admin/items")
   fist.handle(router, req_items, Nil, fn() { "404" })
   |> should.equal("sub items")
 
-  // Rota raiz do roteador pai intacta
+  // Parent router's own root route remains intact
   let req_main =
     request.new() |> request.set_method(Get) |> request.set_path("/")
   fist.handle(router, req_main, Nil, fn() { "404" })
   |> should.equal("main root")
 }
 
-// Testa montagem na raiz ("/" ou "") fundindo rotas
+/// Root Prefix Mount Merging:
+/// Mounting at "/" or "" merges the sub-tree directly into the parent's root without additional prefix segments.
 pub fn mount_at_root_test() {
   let sub =
     fist.new()
@@ -255,7 +259,8 @@ pub fn mount_at_root_test() {
   |> should.equal("extra")
 }
 
-// Testa múltiplos níveis de montagem com diferentes tipos de contexto
+/// Multi-Level Context Transformation:
+/// Context types can be successively transformed across arbitrary levels of nested mounts.
 pub fn deeply_nested_mount_test() {
   let level3 =
     fist.new()

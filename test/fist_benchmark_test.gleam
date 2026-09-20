@@ -9,12 +9,12 @@ fn middleware(next) {
   fn(req, ctx, params) { next(req, ctx, params) <> "." }
 }
 
-// 1. TESTE DE ESTRESSE: 100 middlewares
+/// Middleware Stress Test:
+/// Evaluates dispatch performance and recursion stability across 10,000 stacked middleware layers.
 pub fn heavy_middleware_stress_test() {
   let router =
     fist.new()
     |> fist.get("/ping", fn(_, _, _) { "pong" })
-    // De 0 a 100 (exclusivo) = 100 iterações exatas
     |> int.range(from: 0, to: 10_000, with: _, run: fn(acc, _) {
       fist.wrap(acc, middleware)
     })
@@ -26,11 +26,12 @@ pub fn heavy_middleware_stress_test() {
   string.length(res) |> should.equal(10_004)
 }
 
-// 2. TESTE DE ORDEM (Middleware Order)
 fn append_id(id: String) {
   fn(next) { fn(req, ctx, params) { next(req, ctx, params) <> id } }
 }
 
+/// Static Wrap Middleware Order:
+/// Wrap applies onion layering where the most recently wrapped middleware is the outermost layer.
 pub fn middleware_order_test() {
   let router =
     fist.new()
@@ -41,16 +42,15 @@ pub fn middleware_order_test() {
   let req =
     request.new() |> request.set_method(Get) |> request.set_path("/order")
 
+  // Evaluated: append_id("2")(append_id("1")(handler())) -> "root12"
   fist.handle(router, req, Nil, fn() { "404" })
   |> should.equal("root12")
 }
 
-// Helper para evitar aviso de padrão inalcançável
 fn check_auth(_req) -> Bool {
   False
 }
 
-// 3. TESTE DE SEGURANÇA: Early Return (Short-circuit)
 fn auth_middleware(next) {
   fn(req, ctx, params) {
     case check_auth(req) {
@@ -60,6 +60,8 @@ fn auth_middleware(next) {
   }
 }
 
+/// Middleware Short-Circuiting Baseline:
+/// Middleware returning early halts the pipeline before handler invocation.
 pub fn middleware_short_circuit_test() {
   let router =
     fist.new()

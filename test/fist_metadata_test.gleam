@@ -8,6 +8,8 @@ pub fn main() {
   gleeunit.main()
 }
 
+/// Metadata Attachment & Introspection:
+/// fist.describe associates human-readable documentation with routes, introspectable via fist.inspect.
 pub fn describe_and_inspect_test() {
   let handler = fn(_, _, _) { "ok" }
 
@@ -22,10 +24,10 @@ pub fn describe_and_inspect_test() {
 
   let routes = fist.inspect(router)
 
-  // Verify route count
+  // Verify total route count
   list.length(routes) |> should.equal(3)
 
-  // Verify specific routes
+  // Verify specific route metadata
   let assert Ok(list_users) =
     list.find(routes, fn(r) { r.path == "/users" && r.method == Get })
   list_users.description |> should.equal("List users")
@@ -41,8 +43,9 @@ pub fn describe_and_inspect_test() {
   get_user.params |> should.equal(["id"])
 }
 
+/// No-op Describe Safety:
+/// Calling describe on an empty router is a safe no-op that produces no phantom routes.
 pub fn describe_without_route_test() {
-  // describe called on empty router should do nothing safely
   let router =
     fist.new()
     |> fist.describe("Ghost description")
@@ -50,6 +53,8 @@ pub fn describe_without_route_test() {
   fist.inspect(router) |> should.equal([])
 }
 
+/// Metadata Preservation across Output Mapping:
+/// fist.map transforms handler return types while maintaining route descriptions unchanged.
 pub fn map_preserves_metadata_test() {
   let handler = fn(_, _, _) { "original" }
 
@@ -66,6 +71,8 @@ pub fn map_preserves_metadata_test() {
   route.path |> should.equal("/data")
 }
 
+/// Complex Tree Introspection:
+/// Full path segments and parameter identifiers are accurately reconstructed in deep hierarchies.
 pub fn complex_tree_inspection_test() {
   let h = fn(_, _, _) { "" }
 
@@ -85,7 +92,8 @@ pub fn complex_tree_inspection_test() {
   comments_route.params |> should.equal(["postId"])
 }
 
-// Testa inspeção de rotas montadas (sub-router com prefixo e describe)
+/// Mounted Sub-Router Introspection:
+/// Introspecting a parent router surfaces mounted sub-router routes with combined prefixes and descriptions.
 pub fn inspect_mounted_router_metadata_test() {
   let sub =
     fist.new()
@@ -112,7 +120,8 @@ pub fn inspect_mounted_router_metadata_test() {
   item_route.params |> should.equal(["item_id"])
 }
 
-// Testa inspeção de rota raiz ("/")
+/// Root Route Introspection:
+/// The root route ("/") is correctly reported with its description and an empty parameter list.
 pub fn inspect_root_route_metadata_test() {
   let router =
     fist.new()
@@ -126,7 +135,8 @@ pub fn inspect_root_route_metadata_test() {
   root_route.params |> should.equal([])
 }
 
-// Testa descrição em rotas irmãs que compartilham segmento dinâmico
+/// Sibling Dynamic Route Descriptions:
+/// Distinct routes sharing the same dynamic parent segment preserve their respective descriptions.
 pub fn describe_multiple_dynamic_routes_test() {
   let h = fn(_, _, _) { "" }
   let router =

@@ -12,8 +12,8 @@ pub fn main() {
   gleeunit.main()
 }
 
-// 1. Middleware com Short-Circuit (Early Return)
-// Se o middleware decidir abortar, o handler original JAMAIS deve ser executado
+/// Middleware Short-Circuiting:
+/// An early return in middleware must abort dispatch and prevent inner handler execution.
 pub fn middleware_short_circuit_test() {
   let auth_middleware = fn(next) {
     fn(req, ctx, params) {
@@ -26,18 +26,15 @@ pub fn middleware_short_circuit_test() {
 
   let router =
     fist.new()
-    |> fist.get("/protected", fn(_, _, _) {
-      // Se este handler for executado sem token, o teste falha
-      "sensitive data"
-    })
+    |> fist.get("/protected", fn(_, _, _) { "sensitive data" })
     |> fist.wrap(auth_middleware)
 
-  // Requisição sem token -> deve retornar 401 do middleware
+  // Unauthenticated requests are rejected immediately by middleware
   let req_unauth = request.new() |> request.set_path("/protected")
   fist.handle(router, req_unauth, Nil, fn() { "404" })
   |> should.equal("401 Unauthorized")
 
-  // Requisição com token -> executa o handler e retorna os dados
+  // Authorized requests proceed to the handler
   let req_auth =
     request.new()
     |> request.set_path("/protected")
@@ -46,7 +43,8 @@ pub fn middleware_short_circuit_test() {
   |> should.equal("sensitive data")
 }
 
-// 2. Middleware modificando Request e Params antes de repassar ao handler
+/// Middleware Mutation Invariant:
+/// Middlewares can mutate both the incoming Request and the params Dict before passing to next.
 pub fn middleware_mutating_request_and_params_test() {
   let enrich_middleware = fn(next) {
     fn(req, ctx, params) {
@@ -71,7 +69,8 @@ pub fn middleware_mutating_request_and_params_test() {
   |> should.equal("999:present:req-123")
 }
 
-// 3. fist.wrap deve envelopar rotas em múltiplos métodos HTTP simultâneos
+/// Multi-Method Middleware Wrapping:
+/// fist.wrap must uniformly wrap handlers across all registered HTTP methods in the router.
 pub fn wrap_multiple_http_methods_test() {
   let tag_middleware = fn(next) {
     fn(req, ctx, params) { "[" <> next(req, ctx, params) <> "]" }
@@ -104,7 +103,8 @@ pub fn wrap_multiple_http_methods_test() {
   |> should.equal("[delete_55]")
 }
 
-// 4. wrap e map_context preservam metadados (describe) em fist.inspect
+/// Metadata Preservation across Transformations:
+/// Route descriptions must remain fully intact after applying wrap and map_context.
 pub fn wrap_and_map_context_preserve_metadata_test() {
   let dummy_mw = fn(next) { fn(req, ctx, params) { next(req, ctx, params) } }
 
@@ -128,7 +128,8 @@ pub fn wrap_and_map_context_preserve_metadata_test() {
   get_route.params |> should.equal(["id"])
 }
 
-// 5. Encadeamento composto de múltiplos fist.map
+/// Chained Functor Map Composition:
+/// Output mappers must compose in standard mathematical order: (f ∘ g ∘ h)(x).
 pub fn chained_map_composition_test() {
   let router =
     fist.new()
@@ -142,7 +143,6 @@ pub fn chained_map_composition_test() {
   |> should.equal("Result: 30")
 }
 
-// 6. Encadeamento composto de múltiplos fist.map_context (Contravariante)
 pub type GlobalCtx {
   GlobalCtx(token: String, tenant: String)
 }
@@ -155,14 +155,16 @@ pub type SimpleCtx {
   SimpleCtx(name: String)
 }
 
+/// Chained Contravariant Context Composition:
+/// Context mappers compose backwards from caller context to handler expectations: Ctx1 -> Ctx2 -> Ctx3.
 pub fn chained_map_context_test() {
-  // Handler requer SimpleCtx
+  // Handler expects SimpleCtx
   let router =
     fist.new()
     |> fist.get("/whoami", fn(_, ctx: SimpleCtx, _) { "hello " <> ctx.name })
-    // Transforma SimpleCtx -> TenantCtx
+    // Maps SimpleCtx -> TenantCtx
     |> fist.map_context(fn(t: TenantCtx) { SimpleCtx(name: t.tenant) })
-    // Transforma TenantCtx -> GlobalCtx
+    // Maps TenantCtx -> GlobalCtx
     |> fist.map_context(fn(g: GlobalCtx) { TenantCtx(tenant: g.tenant) })
 
   let req = request.new() |> request.set_path("/whoami")
@@ -172,7 +174,8 @@ pub fn chained_map_context_test() {
   |> should.equal("hello acme_corp")
 }
 
-// 7. Pipeline integrado: Rota dinâmica + 2 Middlewares + map_context + map
+/// End-to-End Transformation Pipeline:
+/// Dynamic routes, stacked middlewares, context adaptation, and output mapping executed in harmony.
 pub fn combined_transformations_pipeline_test() {
   let mw1 = fn(next) {
     fn(req, ctx, params) { "{" <> next(req, ctx, params) <> "}" }
@@ -186,13 +189,12 @@ pub fn combined_transformations_pipeline_test() {
     |> fist.get("/org/:org_id/user/:user_id", fn(_, ctx_num: Int, params) {
       let org = result.unwrap(dict.get(params, "org_id"), "")
       let user = result.unwrap(dict.get(params, "user_id"), "")
-      // Retorna Int
       int.to_string(ctx_num) <> ":" <> org <> ":" <> user
     })
     |> fist.wrap(mw2)
     |> fist.wrap(mw1)
     |> fist.map_context(fn(str: String) {
-      // Converte contexto de String para Int
+      // Adapt context from String to Int
       result.unwrap(int.parse(str), 0)
     })
     |> fist.map(fn(s) { "OUT:" <> s })
@@ -202,19 +204,18 @@ pub fn combined_transformations_pipeline_test() {
   |> should.equal("OUT:{<99:10:42>}")
 }
 
-// 8. Transformações em roteador vazio não devem quebrar novas rotas
+/// Empty Router Transformation Resilience:
+/// Applying transformers to an empty router must not crash or prevent future route additions.
 pub fn empty_router_transformation_test() {
   let mw = fn(next) {
     fn(req, ctx, params) { "wrapped:" <> next(req, ctx, params) }
   }
 
-  // Aplicar wrap num roteador sem rotas não deve crashar
   let empty_wrapped =
     fist.new()
     |> fist.wrap(mw)
     |> fist.map(fn(s) { s <> "!" })
 
-  // E podemos registrar rotas normalmente após isso
   let router =
     empty_wrapped
     |> fist.get("/ping", fn(_, _, _) { "pong" })
@@ -224,7 +225,8 @@ pub fn empty_router_transformation_test() {
   |> should.equal("pong")
 }
 
-// 9. describe após wrap ou mount não deve associar indevidamente a rotas anteriores
+/// Scope Protection for Route Descriptions:
+/// Global transformations (wrap, mount) reset the description pointer, preventing stale attachments.
 pub fn describe_after_wrap_and_mount_clears_pointer_test() {
   let sub =
     fist.new()
@@ -234,10 +236,10 @@ pub fn describe_after_wrap_and_mount_clears_pointer_test() {
     fist.new()
     |> fist.get("/target", fn(_, _, _) { "target" })
     |> fist.wrap(fn(next) { fn(req, ctx, p) { next(req, ctx, p) } })
-    // Deve ser ignorado porque wrap limpou o last_added
+    // Ignored because wrap resets last_added
     |> fist.describe("Ignored description")
     |> fist.mount("/mounted", sub, fn(c) { c })
-    // Deve ser ignorado porque mount limpou o last_added
+    // Ignored because mount resets last_added
     |> fist.describe("Ignored mount description")
 
   let routes = fist.inspect(router)

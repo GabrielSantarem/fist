@@ -5,6 +5,8 @@ import gleam/http/response
 import gleam/list
 import gleeunit/should
 
+/// Path Normalization Invariant:
+/// Trailing slashes and redundant internal slashes must normalize to the same route target.
 pub fn path_normalization_test() {
   let router =
     fist.new()
@@ -17,6 +19,8 @@ pub fn path_normalization_test() {
   fist.handle(router, req2, Nil, fn() { "404" }) |> should.equal("ok")
 }
 
+/// Case Sensitivity Invariant:
+/// Routes with differing casing must be matched independently and never conflated.
 pub fn case_sensitivity_test() {
   let router =
     fist.new()
@@ -30,8 +34,9 @@ pub fn case_sensitivity_test() {
   fist.handle(router, req_lower, Nil, fn() { "404" }) |> should.equal("lower")
 }
 
+/// Same-Level Dynamic Parameter Overwrite:
+/// Registering distinct parameter names at the identical Trie depth causes the latest key to win.
 pub fn parameter_name_conflict_test() {
-  // O último nome definido em um mesmo nível sobrescreve o anterior (Same Level Constraint)
   let router =
     fist.new()
     |> fist.get("/users/:id/profile", fn(_, _, params) {
@@ -48,13 +53,14 @@ pub fn parameter_name_conflict_test() {
   fist.handle(router, req, Nil, fn() { "404" }) |> should.equal("profile")
 }
 
+/// Description Reset on Router Transformation:
+/// Operations transforming the entire router (like map) clear the last_added pointer,
+/// safely ignoring subsequent describe calls.
 pub fn describe_after_map_failure_test() {
-  // Testando a fragilidade do describe após transformações
   let router =
     fist.new()
     |> fist.get("/data", fn(_, _, _) { "ok" })
     |> fist.map(fn(s) { s })
-    // Limpa o last_added
     |> fist.describe("This description will be ignored")
 
   let routes = fist.inspect(router)
@@ -62,14 +68,14 @@ pub fn describe_after_map_failure_test() {
   route.description |> should.equal("")
 }
 
+/// Root Route Equivalence:
+/// Both empty string ("") and single slash ("/") point to the root Trie node.
 pub fn empty_path_root_test() {
   let router =
     fist.new()
     |> fist.get("", fn(_, _, _) { "empty" })
     |> fist.get("/", fn(_, _, _) { "slash" })
 
-  // Ambos devem apontar para o mesmo nó (rota raiz)
-  // O segundo sobrescreve o primeiro
   let req = request.new() |> request.set_path("/")
   fist.handle(router, req, Nil, fn() { "404" }) |> should.equal("slash")
 }
@@ -80,7 +86,8 @@ pub type ApiResponse {
   Forbidden
 }
 
-// Testa o padrão de tipos de retorno ADT customizados transformados via fist.map (docs/advanced.md)
+/// Custom Algebraic Data Type (ADT) Return Handling:
+/// Handlers can return domain ADTs which are subsequently transformed to HTTP responses via map.
 pub fn adt_custom_return_type_test() {
   let router =
     fist.new()

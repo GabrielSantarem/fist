@@ -13,6 +13,8 @@ pub fn main() {
   gleeunit.main()
 }
 
+/// Dynamic Route Matching:
+/// Single wildcard segment (:name) binds URL path tokens into params.
 pub fn dynamic_route_test() {
   let handler = fn(_req, _ctx, params) {
     let name = dict.get(params, "name") |> result_unwrap("stranger")
@@ -39,6 +41,8 @@ pub fn dynamic_route_test() {
   res.body |> should.equal("Hello, tomate!")
 }
 
+/// Multi-Segment Dynamic Routing:
+/// Successive dynamic segments (:user_id and :post_id) are captured independently.
 pub fn nested_dynamic_route_test() {
   let handler = fn(_req, _ctx, params) {
     let user_id = dict.get(params, "user_id") |> result_unwrap("0")
@@ -73,7 +77,8 @@ fn result_unwrap(res, default) {
   }
 }
 
-// Rota não encontrada deve retornar o fallback
+/// Unmatched Path Fallback:
+/// Requests matching no registered path dispatch to the fallback function.
 pub fn not_found_test() {
   let router = fist.new()
 
@@ -92,7 +97,8 @@ pub fn not_found_test() {
   res.body |> should.equal("Not Found")
 }
 
-// Método errado na rota certa deve retornar 404
+/// Method Mismatch Fallback:
+/// Requests matching an existing path but with an unregistered HTTP method invoke the fallback.
 pub fn wrong_method_test() {
   let router =
     fist.new()
@@ -114,7 +120,8 @@ pub fn wrong_method_test() {
   res.status |> should.equal(404)
 }
 
-// Rota estática tem prioridade sobre rota dinâmica
+/// Static Route Precedence:
+/// Exact static paths take precedence over conflicting wildcard dynamic paths.
 pub fn static_takes_priority_over_dynamic_test() {
   let dynamic_handler = fn(_req, _ctx, _params) {
     response.new(200) |> response.set_body("dynamic")
@@ -143,7 +150,8 @@ pub fn static_takes_priority_over_dynamic_test() {
   res.body |> should.equal("static")
 }
 
-// Mesma rota com métodos diferentes deve funcionar independente
+/// Method Isolation Invariant:
+/// Identical paths registered with different HTTP methods are segregated into distinct Trie trees.
 pub fn same_path_different_methods_test() {
   let router =
     fist.new()
@@ -177,7 +185,8 @@ pub fn same_path_different_methods_test() {
   |> should.equal("created item")
 }
 
-// Rota raiz "/"
+/// Root Route Dispatch:
+/// Handlers mounted at the root path ("/") handle root requests cleanly.
 pub fn root_route_test() {
   let router =
     fist.new()
@@ -200,14 +209,15 @@ pub fn root_route_test() {
   res.body |> should.equal("root")
 }
 
-// Parâmetro ausente deve usar o fallback do result.unwrap
+/// Missing Parameter Fallback:
+/// Accessing uncaptured parameter keys falls back gracefully via result unwrapping.
 pub fn missing_param_fallback_test() {
   let handler = fn(_req, _ctx, params) {
     let name = dict.get(params, "name") |> result_unwrap("stranger")
     response.new(200) |> response.set_body("Hello, " <> name <> "!")
   }
 
-  // Rota sem :name, então o dict de params vai estar vazio
+  // Path has no :name dynamic segment, so params Dict is empty
   let router =
     fist.new()
     |> fist.get("/hello", to: handler)
@@ -226,6 +236,8 @@ pub fn missing_param_fallback_test() {
   res.body |> should.equal("Hello, stranger!")
 }
 
+/// Functor Map Response Packaging:
+/// fist.map transforms raw handler outputs into fully formed HTTP responses with headers.
 pub fn response_mapper_test() {
   let router =
     fist.new()
@@ -251,6 +263,8 @@ pub fn response_mapper_test() {
   |> should.equal(Ok("application/json"))
 }
 
+/// Functor Map Value Transformation:
+/// Pure string-to-string transformation across all registered handlers.
 pub fn map_test() {
   let router =
     fist.new()
@@ -269,6 +283,8 @@ pub type MyAnswer {
   Failure
 }
 
+/// ADT Routing Domain Types:
+/// Fist operates over arbitrary return types, supporting custom application ADTs natively.
 pub fn adt_return_test() {
   let router =
     fist.new()
@@ -285,12 +301,12 @@ pub fn adt_return_test() {
   |> should.equal(Failure)
 }
 
-// Teste de Mapeamento em Múltiplas Camadas
+/// Multi-Stage Pipeline Composition:
+/// Successive fist.map stages form an incremental pipeline transforming domain types to HTTP responses.
 pub fn multi_layer_map_test() {
   let router =
     fist.new()
     |> fist.get("/double/:n", to: fn(_req, _ctx, params) {
-      // Retorna um Int
       let n =
         dict.get(params, "n")
         |> result.unwrap("0")
@@ -298,11 +314,11 @@ pub fn multi_layer_map_test() {
         |> result.unwrap(0)
       n * 2
     })
-    // Camada 1: Converte Int -> String
-    |> fist.map(fn(n) { "O resultado é " <> int.to_string(n) })
-    // Camada 2: Converte String -> Response(String)
+    // Stage 1: Int -> String
+    |> fist.map(fn(n) { "Result: " <> int.to_string(n) })
+    // Stage 2: String -> Response(String)
     |> fist.map(fn(body) { response.new(200) |> response.set_body(body) })
-    // Camada 3: Adiciona um Header customizado
+    // Stage 3: Attach custom header
     |> fist.map(fn(res) { response.prepend_header(res, "x-fist", "power") })
 
   let req =
@@ -312,14 +328,14 @@ pub fn multi_layer_map_test() {
       response.new(404) |> response.set_body("not found")
     })
 
-  res.body |> should.equal("O resultado é 42")
+  res.body |> should.equal("Result: 42")
   res.status |> should.equal(200)
   response.get_header(res, "x-fist") |> should.equal(Ok("power"))
 }
 
-// Teste de Composição de Handlers (Pipeline de Middleware)
+/// Handler Decorator Pipeline:
+/// Custom higher-order function wrappers compose smoothly with whole-router transformations.
 pub fn functional_pipeline_test() {
-  // Uma função que simula um middleware de autenticação simples
   let with_auth = fn(
     handler: fn(request.Request(String), Nil, dict.Dict(String, String)) ->
       String,
@@ -335,7 +351,6 @@ pub fn functional_pipeline_test() {
   let router =
     fist.new()
     |> fist.get("/secret", to: with_auth(fn(_, _, _) { "Top Secret Data" }))
-    // Map pode ser usado para limpar o retorno (ex: uppercase)
     |> fist.map(string.uppercase)
 
   let req_no_auth =
@@ -353,6 +368,8 @@ pub fn functional_pipeline_test() {
   |> should.equal("TOP SECRET DATA")
 }
 
+/// Context Value Propagation:
+/// Fist passes caller-provided context directly into route handlers.
 pub fn context_test() {
   let router =
     fist.new()
