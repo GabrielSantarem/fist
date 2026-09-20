@@ -12,12 +12,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
           gleam-version: "1.14.0"
           rebar3-version: "3"
-          # elixir-version: "1"
-      - run: gleam deps download
-      - run: gleam test
-      - run: gleam format --check src test
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Download dependencies
+        run: gleam deps download
+
+      - name: Check code formatting
+        run: gleam format --check src test
+
+      - name: Run tests on BEAM (Erlang)
+        run: gleam test --target erlang
+
+      - name: Run tests on JavaScript (Node.js)
+        run: gleam test --target javascript
+
+      - name: Verify documentation build
+        run: gleam docs build
