@@ -1,12 +1,17 @@
 import fist/internal/inspect
 import fist/internal/trie
-import fist/internal/types
+import fist/internal/types.{
+  DynamicSegment, StaticSegment, WildcardSegment, path_registry_routes,
+}
 import gleam/dict.{type Dict}
 import gleam/http.{type Method, Delete, Get, Head, Options, Patch, Post, Put}
 import gleam/http/request.{type Request}
+import gleam/list
+import gleam/option.{None, Some}
+import gleam/string
+import gleam/uri
 
-// --- TYPES ---
-
+// --- TYPES ---\n
 /// Represents the router instance.
 /// Holds the Radix Trie structure for efficient route matching.
 pub opaque type Router(req_body, ctx, output) {
@@ -16,6 +21,21 @@ pub opaque type Router(req_body, ctx, output) {
 /// Metadata about a registered route, introspectable via `fist.inspect`.
 pub type RouteInfo =
   types.RouteInfo
+
+/// Errors encountered during reverse path generation via `fist.path` or `fist.path_from`.
+pub type PathError {
+  /// The route name is not registered in the router.
+  RouteNotFound(name: String)
+  /// A required dynamic or wildcard parameter was not provided in the parameters list.
+  MissingParameter(route: String, missing: String)
+  /// A parameter was provided, but its value failed the route guard predicate.
+  InvalidParameter(route: String, param: String, value: String)
+}
+
+/// A lightweight, self-contained registry of named route templates.
+/// Safe to store in application context without circular type dependencies.
+pub type PathRegistry =
+  types.PathRegistry
 
 // --- CONSTRUCTORS ---
 
@@ -58,6 +78,17 @@ pub fn guard(
   when predicate: fn(String) -> Bool,
 ) -> Router(req_body, ctx, output) {
   Router(trie.guard(router.inner, param, predicate))
+}
+
+/// Assigns a unique identifier name to the last added route for reverse routing.
+///
+/// Panics if called without an immediately preceding route definition, if `name` is empty,
+/// or if `name` collides with an existing registered route name.
+pub fn name(
+  router: Router(req_body, ctx, output),
+  name name: String,
+) -> Router(req_body, ctx, output) {
+  Router(trie.name(router.inner, name))
 }
 
 /// Adds a GET route to the router.
@@ -123,30 +154,25 @@ pub fn options(
   route(router, method: Options, path: path, handler: handler)
 }
 
-// --- TRANSFORMATION ---
+// --- COMPOSITION ---
 
-/// Transforms the context of the router using a mapping function.
-/// This is the foundation for context polymorphism, allowing a sub-router
-/// that expects a specific context to be used within a parent router with a different context.
+/// Transforms the context required by the router handlers from `ctx_b` to `ctx_a`.
 pub fn map_context(
   router: Router(req_body, ctx_b, output),
-  with mapper: fn(ctx_a) -> ctx_b,
+  mapper: fn(ctx_a) -> ctx_b,
 ) -> Router(req_body, ctx_a, output) {
   Router(trie.map_context(router.inner, mapper))
 }
 
-/// Transforms the output of the router using a mapping function.
+/// Transforms the output value of all route handlers using a mapping function.
 pub fn map(
   router: Router(req_body, ctx, a),
-  with fun: fn(a) -> b,
+  fun: fn(a) -> b,
 ) -> Router(req_body, ctx, b) {
   Router(trie.map(router.inner, fun))
 }
 
-// --- COMPOSITION ---
-
-/// Mounts a sub-router at a specific prefix, transforming its context to match the parent.
-/// This enables modular routing and context polymorphism.
+/// Mounts a sub-router under a specified URL prefix, mapping parent context to child context.
 pub fn mount(
   parent: Router(req, ctx_a, out),
   at prefix: String,
@@ -156,9 +182,7 @@ pub fn mount(
   Router(trie.mount(parent.inner, prefix, sub_router.inner, mapper))
 }
 
-/// Merges two routers with identical context and output types into a single combined router.
-/// Route trees are merged recursively. Collisions in routes or dynamic parameter names
-/// cause an immediate fail-fast panic.
+/// Combines two routers into a single unified router.
 pub fn merge(
   a: Router(req, ctx, out),
   b: Router(req, ctx, out),
@@ -166,19 +190,16 @@ pub fn merge(
   Router(trie.merge(a.inner, b.inner))
 }
 
-/// Wraps all handlers in the router with the given middleware.
-/// A middleware is a function that takes a handler and returns a new, wrapped handler.
+/// Wraps all route handlers in the router with a middleware function.
 pub fn wrap(
   router: Router(req, ctx, out),
-  with middleware: fn(fn(Request(req), ctx, Dict(String, String)) -> out) ->
+  middleware: fn(fn(Request(req), ctx, Dict(String, String)) -> out) ->
     fn(Request(req), ctx, Dict(String, String)) -> out,
 ) -> Router(req, ctx, out) {
   Router(trie.wrap(router.inner, middleware))
 }
 
-/// Groups a set of routes under a common prefix and applies middlewares.
-/// Middlewares are applied in declaration order: the first middleware in the list
-/// executes first, wrapping subsequent middlewares and handlers.
+/// Creates an isolated route group with a prefix and group-specific middlewares.
 pub fn group(
   router: Router(req, ctx, out),
   at prefix: String,
@@ -220,4 +241,148 @@ pub fn allowed_methods(
 /// Returns a list of all registered routes and their metadata.
 pub fn inspect(router: Router(req_body, ctx, output)) -> List(RouteInfo) {
   inspect.inspect(router.inner)
+}
+
+// --- REVERSE ROUTING ---
+
+/// Generates a canonical URL path from a `Router` given a route name and parameter list.
+///
+/// Returns `Error(RouteNotFound(name))` if the route was not registered with `fist.name`.
+/// Returns `Error(MissingParameter(route, missing))` if a required path segment parameter is omitted.
+/// Returns `Error(InvalidParameter(route, param, value))` if a parameter fails its route guard predicate.
+/// Unused parameters in `with` are automatically formatted and appended as URL query parameters.
+pub fn path(
+  router: Router(req_body, ctx, output),
+  for name: String,
+  with params: List(#(String, String)),
+) -> Result(String, PathError) {
+  path_from(path_registry(router), for: name, with: params)
+}
+
+/// Extracts a lightweight, self-contained `PathRegistry` from a `Router`.
+///
+/// The registry contains all named route templates and their guards, but has no generic
+/// dependencies on request body, context, or output types. It can be safely stored in the
+/// application context (e.g. `AppContext`) to allow handlers to generate reverse paths.
+pub fn path_registry(router: Router(req_body, ctx, output)) -> PathRegistry {
+  types.new_path_registry(router.inner.named_routes)
+}
+
+/// Generates a canonical URL path from a `PathRegistry` given a route name and parameter list.
+pub fn path_from(
+  registry: PathRegistry,
+  for name: String,
+  with params: List(#(String, String)),
+) -> Result(String, PathError) {
+  case dict.get(path_registry_routes(registry), name) {
+    Error(Nil) -> Error(RouteNotFound(name))
+    Ok(template) -> {
+      do_render_path(template.segments, params, name, [], [])
+    }
+  }
+}
+
+fn do_render_path(
+  remaining_segments: List(types.TemplateSegment),
+  all_params: List(#(String, String)),
+  route_name: String,
+  path_acc: List(String),
+  used_param_names: List(String),
+) -> Result(String, PathError) {
+  case remaining_segments {
+    [] -> {
+      let base_path = case path_acc {
+        [] -> "/"
+        _ -> "/" <> string.join(list.reverse(path_acc), "/")
+      }
+
+      let unused_params =
+        list.filter(all_params, fn(pair) {
+          let #(key, _) = pair
+          !list.contains(used_param_names, key)
+        })
+
+      case unused_params {
+        [] -> Ok(base_path)
+        _ -> {
+          let query_string = uri.query_to_string(unused_params)
+          case base_path == "/" {
+            True -> Ok("/?" <> query_string)
+            False -> Ok(base_path <> "?" <> query_string)
+          }
+        }
+      }
+    }
+
+    [StaticSegment(seg), ..rest] -> {
+      do_render_path(
+        rest,
+        all_params,
+        route_name,
+        [seg, ..path_acc],
+        used_param_names,
+      )
+    }
+
+    [DynamicSegment(param_name, guard_opt), ..rest] -> {
+      case list.key_find(all_params, param_name) {
+        Error(Nil) ->
+          Error(MissingParameter(route: route_name, missing: param_name))
+        Ok(val) -> {
+          case guard_opt {
+            Some(predicate) -> {
+              case predicate(val) {
+                True -> {
+                  let encoded = uri.percent_encode(val)
+                  do_render_path(
+                    rest,
+                    all_params,
+                    route_name,
+                    [encoded, ..path_acc],
+                    [param_name, ..used_param_names],
+                  )
+                }
+                False ->
+                  Error(InvalidParameter(
+                    route: route_name,
+                    param: param_name,
+                    value: val,
+                  ))
+              }
+            }
+            None -> {
+              let encoded = uri.percent_encode(val)
+              do_render_path(
+                rest,
+                all_params,
+                route_name,
+                [encoded, ..path_acc],
+                [param_name, ..used_param_names],
+              )
+            }
+          }
+        }
+      }
+    }
+
+    [WildcardSegment(param_name), ..rest] -> {
+      case list.key_find(all_params, param_name) {
+        Error(Nil) ->
+          Error(MissingParameter(route: route_name, missing: param_name))
+        Ok(val) -> {
+          let encoded = encode_wildcard_path(val)
+          do_render_path(rest, all_params, route_name, [encoded, ..path_acc], [
+            param_name,
+            ..used_param_names
+          ])
+        }
+      }
+    }
+  }
+}
+
+fn encode_wildcard_path(val: String) -> String {
+  string.split(val, "/")
+  |> list.map(uri.percent_encode)
+  |> string.join("/")
 }
