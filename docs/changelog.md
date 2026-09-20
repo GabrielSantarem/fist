@@ -1,6 +1,16 @@
 # Changelog
 
-## v1.5.0 (Upcoming)
+## v1.6.0
+- **Fix**: Fixed dynamic segment handling in `mount` and `group` prefixes (e.g. `/orgs/:org_id`).
+- **Fix**: Fixed middleware execution order in `fist.group` so middlewares execute in natural declaration order.
+- **Feat**: Added automatic URL percent-decoding for path parameters and static segments (e.g. UTF-8, spaces, plus signs).
+- **Feat**: Added defensive stripping of query parameters (`?`) and URL fragments (`#`) during path parsing.
+- **Feat**: Added `fist.head` and `fist.options` HTTP method helper functions.
+- **Feat**: Added `fist.allowed_methods` to inspect all registered HTTP methods for a given route (enabling CORS preflight and 405 Method Not Allowed).
+- **Test**: Expanded test coverage to 51 tests, including deep Trie backtracking, precedence rules, and edge cases.
+- **Docs**: Rewrote documentation and user guide for conciseness and clarity. Removed deprecated examples.
+
+## v1.5.0
 - **Feat**: Added `fist.wrap` for applying middlewares to all routes in a router.
 - **Feat**: Added `fist.group` for scoping routes under a prefix and shared middlewares.
 - **Feat**: Added `fist.mount` and `fist.map_context` for modular routing and context polymorphism.
