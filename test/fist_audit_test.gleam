@@ -1,6 +1,7 @@
 import fist
 import gleam/dict
 import gleam/http/request
+import gleam/http/response
 import gleam/list
 import gleeunit/should
 
@@ -30,7 +31,7 @@ pub fn case_sensitivity_test() {
 }
 
 pub fn parameter_name_conflict_test() {
-  // O último nome definido em um mesmo nível sobrescreve o anterior
+  // O último nome definido em um mesmo nível sobrescreve o anterior (Same Level Constraint)
   let router =
     fist.new()
     |> fist.get("/users/:id/profile", fn(_, _, params) {
@@ -59,7 +60,6 @@ pub fn describe_after_map_failure_test() {
   let routes = fist.inspect(router)
   let assert Ok(route) = list.first(routes)
   route.description |> should.equal("")
-  // Falhou em adicionar a descrição
 }
 
 pub fn empty_path_root_test() {
@@ -72,4 +72,54 @@ pub fn empty_path_root_test() {
   // O segundo sobrescreve o primeiro
   let req = request.new() |> request.set_path("/")
   fist.handle(router, req, Nil, fn() { "404" }) |> should.equal("slash")
+}
+
+pub type ApiResponse {
+  Text(String)
+  Json(String)
+  Forbidden
+}
+
+// Testa o padrão de tipos de retorno ADT customizados transformados via fist.map (docs/advanced.md)
+pub fn adt_custom_return_type_test() {
+  let router =
+    fist.new()
+    |> fist.get("/text", fn(_, _, _) { Text("plain") })
+    |> fist.get("/json", fn(_, _, _) { Json("{\"status\":\"active\"}") })
+    |> fist.get("/secret", fn(_, _, _) { Forbidden })
+    |> fist.map(fn(res) {
+      case res {
+        Text(body) -> response.new(200) |> response.set_body(body)
+        Json(json) ->
+          response.new(200)
+          |> response.set_header("content-type", "application/json")
+          |> response.set_body(json)
+        Forbidden -> response.new(403) |> response.set_body("Forbidden")
+      }
+    })
+
+  let req = fn(path) { request.new() |> request.set_path(path) }
+
+  let res_text =
+    fist.handle(router, req("/text"), Nil, fn() {
+      response.new(404) |> response.set_body("")
+    })
+  res_text.status |> should.equal(200)
+  res_text.body |> should.equal("plain")
+
+  let res_json =
+    fist.handle(router, req("/json"), Nil, fn() {
+      response.new(404) |> response.set_body("")
+    })
+  res_json.status |> should.equal(200)
+  res_json.body |> should.equal("{\"status\":\"active\"}")
+  response.get_header(res_json, "content-type")
+  |> should.equal(Ok("application/json"))
+
+  let res_secret =
+    fist.handle(router, req("/secret"), Nil, fn() {
+      response.new(404) |> response.set_body("")
+    })
+  res_secret.status |> should.equal(403)
+  res_secret.body |> should.equal("Forbidden")
 }
