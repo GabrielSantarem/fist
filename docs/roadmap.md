@@ -10,11 +10,16 @@ Project vision, milestone tracking, and architectural research for `fist`.
 - **Named Routes & Reverse Routing (`fist.name`, `fist.path`)**:
   - Assign unique, type-friendly identifiers to registered endpoints.
   - Generate canonical URLs programmatically with safe parameter interpolation (`fist.path(router, "user_profile", [#("id", "42")])`), eliminating broken, hardcoded URL strings across applications.
-- **Constrained Dynamic Routing & Segment Guards (`fist.get_if`, `when`)**:
+- **Constrained Dynamic Routing & Route Guards (`fist.guard(param, when: predicate)`)**:
   - Add functional predicates to dynamic route segments (e.g. matching numeric `:id` vs alphabetic `:slug` at the same tree depth).
-  - If a guard evaluates to `False`, the router seamlessly continues traversal to subsequent matching branches before returning 404.
+  - If a guard evaluates to `False`, the router seamlessly continues traversal to subsequent matching dynamic branches or wildcards before returning 404.
 
-### v1.10.0 — Robustness & Standards Compliance
+### v1.10.0 — Robustness, Observability & Standards Compliance
+- **Advanced Routing Diagnostics & Debugging Tooling (`fist.explain`, `fist.trace`, `fist.visualize`)**:
+  - Provide extensive, high-level debugging and diagnostic tools to inspect and trace routing decisions in complex trees.
+  - **Route Execution Tracing (`fist.trace`)**: Step-by-step trace of how a request traverses the Radix Trie, detailing static matches, guard evaluations (`True`/`False`), dynamic branch fallthroughs, and wildcard backtracking decisions.
+  - **Tree Diagnostics & Visualization (`fist.visualize`)**: Output the internal Radix Trie structure (ASCII tree, structured JSON, or diagnostic summary) to audit route hierarchy, parameter precedence, and guarded branch ordering.
+  - **Conflict & Dead Route Detection (`fist.audit`)**: Proactively diagnose unreachable branches, shadowed dynamic segments, or redundant guards at compile/build time.
 - **Automatic `HEAD` Method Derivation (RFC 9110)**:
   - Automatically fulfill HTTP `HEAD` requests using registered `GET` handlers with identical status codes and headers, stripping the response body as mandated by RFC 9110.
 - **Panic Recovery Middleware (`fist.recover`)**:
@@ -48,7 +53,7 @@ Project vision, milestone tracking, and architectural research for `fist`.
 
 ### v1.5.0
 - **Sub-routers & Mounting**: Modular routing via `fist.mount` handicapping.
-- **Context Polymorphism**: Mapping sub-router contexts via `fist.map_context`.
+- **Context Polymorphism**: Mapping sub-router contexts via `fist.map_context` industries.
 - **Route Groups**: Grouping endpoints under prefixes with `fist.group`.
 - **Static Middlewares**: Functional route wrapping via `fist.wrap`.
 
