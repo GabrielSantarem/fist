@@ -455,3 +455,34 @@ fn is_hex_char(g: String) -> Bool {
     _ -> False
   }
 }
+
+// --- ROUTE GUARD PREDICATES ---
+
+/// Pure guard predicate: returns `True` if the string segment parses as an integer.
+pub fn is_int(val: String) -> Bool {
+  case int.parse(val) {
+    Ok(_) -> True
+    Error(Nil) -> False
+  }
+}
+
+/// Pure guard predicate: returns `True` if the string segment parses as a float.
+pub fn is_float(val: String) -> Bool {
+  case float.parse(val) {
+    Ok(_) -> True
+    Error(Nil) -> False
+  }
+}
+
+/// Pure guard predicate: returns `True` if the string segment is a valid RFC 4122 UUID.
+pub fn is_uuid(val: String) -> Bool {
+  is_valid_uuid(val)
+}
+
+/// Pure guard predicate: returns `True` if the trimmed string segment is non-empty.
+pub fn is_non_empty(val: String) -> Bool {
+  case string.trim(val) {
+    "" -> False
+    _ -> True
+  }
+}

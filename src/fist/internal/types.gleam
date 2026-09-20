@@ -11,6 +11,15 @@ pub type Route(req_body, ctx, output) {
   )
 }
 
+/// A dynamic parameter branch in the Trie, supporting optional functional guards.
+pub type DynamicBranch(req_body, ctx, output) {
+  DynamicBranch(
+    param_name: String,
+    guard: Option(fn(String) -> Bool),
+    child: Node(req_body, ctx, output),
+  )
+}
+
 /// A node in the router's internal Trie structure.
 pub type Node(req_body, ctx, output) {
   Node(
@@ -18,8 +27,8 @@ pub type Node(req_body, ctx, output) {
     route: Option(Route(req_body, ctx, output)),
     /// Static children are exact string matches (e.g., "users", "settings").
     static_children: Dict(String, Node(req_body, ctx, output)),
-    /// A dynamic child is a single-segment wildcard parameter (e.g., ":id", ":slug").
-    dynamic_child: Option(#(String, Node(req_body, ctx, output))),
+    /// Dynamic children are single-segment wildcard branches, evaluated in priority order.
+    dynamic_children: List(DynamicBranch(req_body, ctx, output)),
     /// A wildcard child is a multi-segment catch-all parameter (e.g., "*filepath", "*rest").
     wildcard_child: Option(#(String, Route(req_body, ctx, output))),
   )
@@ -48,7 +57,7 @@ pub fn empty_node() -> Node(req_body, ctx, output) {
   Node(
     route: None,
     static_children: dict.new(),
-    dynamic_child: None,
+    dynamic_children: [],
     wildcard_child: None,
   )
 }

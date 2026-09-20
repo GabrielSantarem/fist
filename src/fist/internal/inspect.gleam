@@ -30,17 +30,16 @@ pub fn inspect_node(
       inspect_node(child, method, list.append(path_acc, [segment]), params_acc)
     })
 
-  let dynamic_infos = case node.dynamic_child {
-    option.Some(#(param_name, child)) -> {
+  let dynamic_infos =
+    node.dynamic_children
+    |> list.flat_map(fn(branch) {
       inspect_node(
-        child,
+        branch.child,
         method,
-        list.append(path_acc, [":" <> param_name]),
-        list.append(params_acc, [param_name]),
+        list.append(path_acc, [":" <> branch.param_name]),
+        list.append(params_acc, [branch.param_name]),
       )
-    }
-    option.None -> []
-  }
+    })
 
   let wildcard_infos = case node.wildcard_child {
     option.Some(#(param_name, r)) -> [
@@ -59,8 +58,7 @@ pub fn inspect_node(
 }
 
 pub fn inspect(router: Router(req_body, ctx, output)) -> List(RouteInfo) {
-  router.routes
-  |> dict.to_list
+  dict.to_list(router.routes)
   |> list.flat_map(fn(pair) {
     let #(method, root_node) = pair
     inspect_node(root_node, method, [], [])

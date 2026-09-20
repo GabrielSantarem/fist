@@ -44,6 +44,22 @@ pub fn describe(
   Router(trie.describe(router.inner, description))
 }
 
+/// Attaches a functional predicate (guard) to a dynamic parameter in the last added route.
+///
+/// When an incoming request matches this path segment, `predicate` is evaluated.
+/// If `predicate` returns `True`, routing continues down this branch.
+/// If `predicate` returns `False`, the router seamlessly falls through to subsequent
+/// sibling branches (e.g. matching numeric `:id` before generic `:username`) before returning 404.
+///
+/// Panics if called without an immediately preceding route or if `param` is not in the route.
+pub fn guard(
+  router: Router(req_body, ctx, output),
+  param param: String,
+  when predicate: fn(String) -> Bool,
+) -> Router(req_body, ctx, output) {
+  Router(trie.guard(router.inner, param, predicate))
+}
+
 /// Adds a GET route to the router.
 pub fn get(
   router: Router(req_body, ctx, output),
