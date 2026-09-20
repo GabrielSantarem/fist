@@ -34,12 +34,12 @@ pub fn parse_path(path: String) -> List(String) {
 
   clean_path
   |> string.split("/")
-  |> list.filter(fn(s) { s != "" })
   |> list.map(fn(segment) {
     uri.percent_decode(segment)
     |> result.unwrap(segment)
     |> string.replace("\u{0000}", "")
   })
+  |> list.filter(fn(s) { s != "" })
   |> remove_dot_segments
 }
 

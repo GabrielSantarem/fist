@@ -351,12 +351,14 @@ fn do_render_path(
         Error(Nil) ->
           Error(MissingParameter(route: route_name, missing: param_name))
         Ok(val) -> {
-          case val == "" {
+          case
+            val == "" || val == "." || val == ".." || string.contains(val, "..")
+          {
             True ->
               Error(InvalidParameter(
                 route: route_name,
                 param: param_name,
-                value: "",
+                value: val,
               ))
             False -> {
               case guard_opt {
