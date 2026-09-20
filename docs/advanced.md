@@ -133,6 +133,7 @@ let app_router =
 ```
 
 ### Path Generation with Cumulative Prefixes
+
 When generating the reverse path for `project_issue`, `fist.path` requires all parameters across every tier:
 
 ```gleam
@@ -145,6 +146,7 @@ fist.path(app_router, for: "project_issue", with: [
 ```
 
 If any tier's parameter is missing, Fist reports the exact missing parameter:
+
 ```gleam
 fist.path(app_router, for: "project_issue", with: [
   #("project_slug", "fist-router"),
@@ -158,15 +160,18 @@ fist.path(app_router, for: "project_issue", with: [
 ## 6. Resolving Circular Type Recursion with `PathRegistry`
 
 A frequent architectural dilemma in web frameworks is how route handlers can generate reverse URLs when they require access to the router:
+
 1. `AppContext` needs `Router` to call `fist.path(router, ...)`.
 2. But `Router` is generic over `AppContext` (`Router(req, AppContext, out)`).
 3. This creates an impossible circular type recursion in statically typed languages!
 
 ### The Solution: Type Erasure via `PathRegistry`
+
 Fist resolves this elegantly with the opaque type `PathRegistry`:
-*   `PathRegistry` has **zero generic type arguments**. It only holds route templates, guard predicates, and segment names.
-*   Your application context stores only `PathRegistry`.
-*   Handlers generate paths by calling `fist.path_from(ctx.registry, for: name, with: params)`.
+
+- `PathRegistry` has **zero generic type arguments**. It only holds route templates, guard predicates, and segment names.
+- Your application context stores only `PathRegistry`.
+- Handlers generate paths by calling `fist.path_from(ctx.registry, for: name, with: params)`.
 
 ```gleam
 // Handler is completely decoupled from Router
@@ -189,11 +194,12 @@ When redesigning API endpoints or migrating URL names, you can assign multiple n
 ```gleam
 router
 |> fist.get("/accounts/:id", to: show_account)
-|> fist.name("user_account")       // New canonical name
+|> fist.name("user_account")        // New canonical name
 |> fist.name("legacy_user_profile") // Deprecated alias
 ```
 
 Both names resolve to `/accounts/:id`:
-*   Existing code calling `legacy_user_profile` continues to work without disruption.
-*   New modules can use `user_account`.
-*   Both templates share the exact same guard validation and URL serialization.
+
+- Existing code calling `legacy_user_profile` continues to work without disruption.
+- New modules can use `user_account`.
+- Both templates share the exact same guard validation and URL serialization.

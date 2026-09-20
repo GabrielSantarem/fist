@@ -23,12 +23,15 @@ pub fn create_router() {
 ## 2. Route Handlers & Methods
 
 Every handler receives three arguments:
+
 1. `req`: The HTTP `Request(req_body)`.
 2. `ctx`: A custom application context (e.g. database, config, state).
 3. `params`: A `Dict(String, String)` containing extracted URL parameters.
 
 ### Supported Methods
+
 `fist` provides first-class helpers for standard HTTP methods:
+
 - `fist.get(router, path, to: handler)`
 - `fist.post(router, path, to: handler)`
 - `fist.put(router, path, to: handler)`
@@ -68,6 +71,7 @@ let router =
 Route guards attach functional validation predicates (`fn(String) -> Bool`) directly to dynamic path parameters in the Radix Trie.
 
 ### Guarding Parameters
+
 When an incoming request matches a dynamic segment, the guard predicate evaluates. If it returns `True`, routing continues down that branch. If `False`, the router seamlessly falls through to subsequent candidate branches.
 
 ```gleam
@@ -84,11 +88,14 @@ let router =
 ```
 
 ### Precedence & Fallthrough
+
 In the example above:
+
 1. A request to `/users/42` evaluates `extract.is_int("42")` → `True`. Dispatched to `show_user_by_id`.
 2. A request to `/users/john_doe` evaluates `extract.is_int("john_doe")` → `False`. Fist automatically falls through to the sibling `:username` branch and dispatches to `show_user_by_username`.
 
 ### Combining Multiple Guards
+
 Multiple `fist.guard` calls on the same parameter chain with short-circuiting logical `AND`:
 
 ```gleam
@@ -145,6 +152,7 @@ If two merged routers contain conflicting endpoints or conflicting dynamic param
 ## 7. Route Groups & Middlewares
 
 ### Groups
+
 Organize related routes under a common path prefix and apply shared middlewares:
 
 ```gleam
@@ -158,6 +166,7 @@ let router =
 ```
 
 ### Middlewares (`wrap`)
+
 Middlewares are wrapper functions `(Handler) -> Handler`. They are applied at definition time (*Static Wrapping*), introducing zero Trie lookup overhead at runtime.
 
 Middlewares execute in declaration order (the first in the list executes outermost):
@@ -193,6 +202,7 @@ let router =
 ```
 
 ### Generating URLs with `fist.path`
+
 ```gleam
 // 1. Valid parameter generates URL
 fist.path(router, for: "user_profile", with: [#("id", "42")])
@@ -208,6 +218,7 @@ fist.path(router, for: "user_profile", with: [
 ```
 
 ### Bidirectional Guard Enforcement
+
 If a parameter fails the route's guard predicate, `fist.path` refuses to generate an invalid URL:
 
 ```gleam
@@ -216,10 +227,12 @@ fist.path(router, for: "user_profile", with: [#("id", "not-a-number")])
 ```
 
 ### Error Handling
+
 `fist.path` returns a `Result(String, fist.PathError)`:
-*   `Error(RouteNotFound(name))`: Route name is not registered.
-*   `Error(MissingParameter(route, missing))`: A required path parameter was omitted.
-*   `Error(InvalidParameter(route, param, value))`: The value is empty or failed its guard predicate.
+
+- `Error(RouteNotFound(name))`: Route name is not registered.
+- `Error(MissingParameter(route, missing))`: A required path parameter was omitted.
+- `Error(InvalidParameter(route, param, value))`: The value is empty or failed its guard predicate.
 
 ---
 
@@ -382,6 +395,7 @@ pub fn dispatch(router, req, ctx) {
 The `fist/extract` module provides pure, ergonomic helpers to extract and parse path and query parameters into concrete Gleam types, avoiding boilerplate string parsing inside your route handlers.
 
 ### Built-in Parsers
+
 - `extract.int(params, "id")`: Parses integer (`Int`).
 - `extract.float(params, "price")`: Parses floating-point number (`Float`).
 - `extract.bool(params, "active")`: Parses boolean (`"true"`, `"1"`, `"yes"` vs `"false"`, `"0"`, `"no"`).
