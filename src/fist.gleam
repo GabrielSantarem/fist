@@ -1,10 +1,11 @@
 import gleam/dict.{type Dict}
-import gleam/http.{type Method, Delete, Get, Patch, Post, Put}
+import gleam/http.{type Method, Delete, Get, Head, Options, Patch, Post, Put}
 import gleam/http/request.{type Request}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import gleam/uri
 
 // --- TYPES ---
 
@@ -61,11 +62,23 @@ fn empty_node() -> Node(req_body, ctx, output) {
 
 // --- INTERNAL LOGIC ---
 
-/// Splits a path string into segments, ignoring empty strings.
+/// Splits a path string into segments, ignoring empty strings and decoding percent-encoded characters.
+/// Also strips query parameters and URL fragments if present in the path.
 fn parse_path(path: String) -> List(String) {
-  path
+  let clean_path = case string.split_once(path, "?") {
+    Ok(#(p, _)) -> p
+    Error(Nil) -> path
+  }
+  let clean_path = case string.split_once(clean_path, "#") {
+    Ok(#(p, _)) -> p
+    Error(Nil) -> clean_path
+  }
+  clean_path
   |> string.split("/")
   |> list.filter(fn(s) { s != "" })
+  |> list.map(fn(segment) {
+    uri.percent_decode(segment) |> result.unwrap(segment)
+  })
 }
 
 /// Recursively inserts a route into the Trie.
@@ -118,7 +131,6 @@ fn update_description(
         Some(r) ->
           Node(..node, route: Some(Route(..r, description: Some(desc))))
         None -> node
-        // Should not happen if logic is correct
       }
     }
 
@@ -269,6 +281,24 @@ pub fn patch(
   route(router, method: Patch, path: path, handler: handler)
 }
 
+/// Adds a HEAD route to the router.
+pub fn head(
+  router: Router(req_body, ctx, output),
+  path path: String,
+  to handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
+  route(router, method: Head, path: path, handler: handler)
+}
+
+/// Adds an OPTIONS route to the router.
+pub fn options(
+  router: Router(req_body, ctx, output),
+  path path: String,
+  to handler: fn(Request(req_body), ctx, Dict(String, String)) -> output,
+) -> Router(req_body, ctx, output) {
+  route(router, method: Options, path: path, handler: handler)
+}
+
 // --- TRANSFORMATION ---
 
 /// Transforms the context of the router using a mapping function.
@@ -376,6 +406,11 @@ fn prefix_node(
 ) -> Node(req, ctx, out) {
   case segments {
     [] -> sub_tree
+    [":" <> param_name, ..rest] -> {
+      let child = prefix_node(rest, sub_tree)
+      let empty = empty_node()
+      Node(..empty, dynamic_child: Some(#(param_name, child)))
+    }
     [segment, ..rest] -> {
       let child = prefix_node(rest, sub_tree)
       let empty = empty_node()
@@ -418,8 +453,7 @@ pub fn wrap(
   router: Router(req, ctx, out),
   with middleware: fn(
     fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
-  ) ->
-    fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
+  ) -> fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
 ) -> Router(req, ctx, out) {
   let new_routes =
     dict.map_values(router.routes, fn(_, node) { wrap_node(node, middleware) })
@@ -430,8 +464,7 @@ fn wrap_node(
   node: Node(req, ctx, out),
   middleware: fn(
     fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
-  ) ->
-    fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
+  ) -> fn(request.Request(req), ctx, dict.Dict(String, String)) -> out,
 ) -> Node(req, ctx, out) {
   let new_route =
     option.map(node.route, fn(r) {
@@ -453,7 +486,8 @@ fn wrap_node(
 }
 
 /// Groups a set of routes under a common prefix and applies middlewares.
-/// Middleware is applied at definition time (Static Wrapping).
+/// Middlewares are applied in declaration order: the first middleware in the list
+/// executes first, wrapping subsequent middlewares and handlers.
 pub fn group(
   router: Router(req, ctx, out),
   at prefix: String,
@@ -464,7 +498,7 @@ pub fn group(
   defining build_sub_router: fn(Router(req, ctx, out)) -> Router(req, ctx, out),
 ) -> Router(req, ctx, out) {
   let sub_router =
-    list.fold(middlewares, build_sub_router(new()), fn(acc_r, mw) {
+    list.fold(list.reverse(middlewares), build_sub_router(new()), fn(acc_r, mw) {
       wrap(acc_r, mw)
     })
 
@@ -490,6 +524,23 @@ pub fn handle(
     Ok(#(handler, params)) -> handler(request, context, params)
     Error(_) -> not_found()
   }
+}
+
+/// Returns a list of all HTTP methods registered for a given path.
+/// Useful for CORS preflight (OPTIONS) or returning 405 Method Not Allowed.
+pub fn allowed_methods(
+  router: Router(req_body, ctx, output),
+  path: String,
+) -> List(Method) {
+  let req_segments = parse_path(path)
+  dict.to_list(router.routes)
+  |> list.filter_map(fn(pair) {
+    let #(method, root) = pair
+    case find_route(root, req_segments, dict.new()) {
+      Ok(_) -> Ok(method)
+      Error(Nil) -> Error(Nil)
+    }
+  })
 }
 
 // --- INTROSPECTION ---
